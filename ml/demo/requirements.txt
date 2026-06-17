@@ -1,0 +1,9 @@
+# Hugging Face Spaces (Gradio SDK) demo dependencies.
+# fairness-core is installed from the repository checked out into the Space.
+gradio>=4.44
+scikit-learn>=1.4
+fairlearn>=0.10
+matplotlib>=3.8
+pandas>=2.1
+numpy>=1.26
+-e ./packages/fairness-core

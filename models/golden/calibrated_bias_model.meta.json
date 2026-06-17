@@ -1,0 +1,20 @@
+{
+  "name": "calibrated_bias_model",
+  "model": "LogisticRegression",
+  "sklearn_version": "1.9.0",
+  "seed": 42,
+  "n": 8000,
+  "disadvantage": 0.46,
+  "features": [
+    "income",
+    "credit_score",
+    "debt_ratio"
+  ],
+  "protected_attribute": "race",
+  "measured_race_black_di": 0.551,
+  "di_band": [
+    0.53,
+    0.57
+  ],
+  "note": "Empirically pinned under a frozen seed/data/code version; not analytic."
+}
