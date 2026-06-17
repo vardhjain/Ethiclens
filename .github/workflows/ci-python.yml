@@ -1,0 +1,46 @@
+name: ci-python
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Actions are referenced by major tag here for readability; production hardening
+# pins each to a full commit SHA (see docs/adr/0005-pin-ci-actions.md).
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: lint · type · test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - name: Install
+        run: |
+          uv pip install --system \
+            -e "packages/fairness-core[validation,viz,cli]" \
+            -e services/api \
+            pytest pytest-cov pytest-asyncio hypothesis ruff mypy pandas-stubs joblib
+      - name: Ruff lint
+        run: ruff check .
+      - name: Ruff format check
+        run: ruff format --check .
+      - name: mypy (strict on the engine)
+        run: mypy packages/fairness-core/src
+      - name: Tests + coverage gate
+        run: pytest --cov=fairness_core --cov-report=xml --cov-report=term-missing --cov-fail-under=85
+      - name: Upload coverage
+        if: matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false

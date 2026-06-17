@@ -1,0 +1,31 @@
+site_name: EthicLens
+site_description: AI Bias Detection & Mitigation Workbench — methodology, architecture, ADRs.
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: teal
+      toggle: { icon: material/weather-night, name: Dark mode }
+    - scheme: slate
+      primary: teal
+      toggle: { icon: material/weather-sunny, name: Light mode }
+  features:
+    - navigation.sections
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - tables
+  - toc: { permalink: true }
+
+nav:
+  - Home: index.md
+  - Methodology: methodology.md
+  - STP Traceability: traceability-matrix.md
+  - Limitations: limitations.md
+  - Architecture Decisions:
+      - Composite weights: adr/0001-composite-weights.md
+      - ONNX & sandbox: adr/0002-onnx-keystone-and-sandbox.md
+      - Pinning CI actions: adr/0005-pin-ci-actions.md

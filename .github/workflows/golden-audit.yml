@@ -1,0 +1,30 @@
+name: golden-audit
+
+# The crown jewel: every push re-runs the bias audit against the pinned
+# golden-reference model and FAILS if the measured Disparate Impact drifts out
+# of its empirically-pinned band [0.53, 0.57]. This is how the repo *proves* its
+# fairness math stays correct over time.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  golden:
+    name: golden-reference DI regression gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install engine + training deps
+        run: uv pip install --system -e "packages/fairness-core[validation,viz,cli]" -r ml/requirements.txt
+      - name: Rebuild + verify golden model (DI must land in [0.53, 0.57])
+        run: python -m ml.training.train_calibrated_bias_model --verify

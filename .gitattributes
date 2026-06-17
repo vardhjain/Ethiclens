@@ -1,0 +1,10 @@
+# Normalize line endings; keep shell scripts LF so they run in Docker.
+* text=auto eol=lf
+*.sh text eol=lf
+
+# Treat binaries as binary (no diff / EOL munging).
+*.pdf binary
+*.pkl binary
+*.png binary
+*.ico binary
+*.parquet binary

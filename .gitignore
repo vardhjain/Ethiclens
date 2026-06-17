@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.coverage
+coverage.xml
+htmlcov/
+*.db
+*.sqlite3
+
+# Node / frontend
+node_modules/
+apps/web/dist/
+apps/web/.vite/
+*.local
+
+# ML / data (tracked via DVC / Git LFS where needed, raw data never committed)
+data/raw/
+data/processed/
+data/synthetic/
+models/uploaded/
+ml/mlruns/
+mlruns/
+*.h5
+*.pt
+*.onnx
+# Golden fixtures are the exception — force-added explicitly:
+!models/golden/**
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+
+# The original STP lives at docs/original-stp.pdf; ignore the root working copy.
+/Ethiclens.pdf
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,70 @@
+# EthicLens monorepo — uv workspace root (virtual; not itself a package).
+# Each shippable component (packages/fairness-core, services/api) is a workspace
+# member with its own pyproject.toml. Shared tool configuration lives here.
+
+[tool.uv.workspace]
+members = ["packages/*", "services/*"]
+
+[tool.uv]
+# fairness-core is an editable path dependency of everything else.
+package = false
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5.0",
+    "hypothesis>=6.100",
+]
+
+# --- Ruff (lint + format) --------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["packages/fairness-core/src", "services/api/src", "ml"]
+extend-exclude = [".venv", "apps", "data", "models", "ml/mlruns"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "PD", "NPY", "RUF"]
+# RUF022: __all__ is grouped by category (with comments) on purpose, not sorted.
+# B008: FastAPI Depends() in argument defaults is the idiomatic pattern.
+ignore = ["RUF022", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests legitimately exercise the legacy global RNG (to verify global seeding).
+"**/tests/**" = ["B011", "NPY002"]
+# Notebook-style (# %%) scripts use mid-cell imports by design.
+"ml/notebooks/*" = ["E402"]
+
+# --- mypy (strict on the engine) -------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+# Several third-party override blocks are forward-looking (used once the API
+# imports onnx/aif360), so unused-config warnings are not meaningful here.
+warn_unused_configs = false
+disallow_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = [
+    "fairlearn.*", "sklearn.*", "onnxruntime.*", "skl2onnx.*", "aif360.*",
+    "reportlab.*", "matplotlib.*", "joblib.*",
+]
+ignore_missing_imports = true
+
+# --- pytest ----------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["packages/fairness-core/tests", "ml/tests", "services/api/tests"]
+addopts = "-ra --strict-markers"
+asyncio_mode = "auto"
+markers = [
+    "perf: performance smoke tests (deselect with -m 'not perf')",
+    "integration: cross-component integration tests",
+]
+
+[tool.coverage.report]
+exclude_also = ["if __name__ == .__main__.:", "raise NotImplementedError", "\\.\\.\\."]
