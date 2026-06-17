@@ -1,0 +1,39 @@
+# Multi-stage build for the EthicLens API / worker (shared image).
+FROM python:3.12-slim AS builder
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+ENV UV_LINK_MODE=copy
+WORKDIR /app
+
+# Copy only what is needed to resolve & install the Python packages.
+COPY pyproject.toml ./
+COPY packages ./packages
+COPY services ./services
+
+RUN uv venv /opt/venv && \
+    VIRTUAL_ENV=/opt/venv uv pip install --no-cache \
+    -e packages/fairness-core -e services/api
+
+# --- runtime ---------------------------------------------------------------
+FROM python:3.12-slim AS runtime
+
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+WORKDIR /app
+
+COPY --from=builder /opt/venv /opt/venv
+COPY packages ./packages
+COPY services ./services
+COPY ml ./ml
+COPY models ./models
+COPY infra/docker/entrypoint-api.sh /entrypoint-api.sh
+RUN chmod +x /entrypoint-api.sh && \
+    adduser --disabled-password --gecos "" appuser && chown -R appuser /app
+USER appuser
+
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"
+
+ENTRYPOINT ["/entrypoint-api.sh"]

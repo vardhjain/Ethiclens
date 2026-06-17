@@ -1,0 +1,65 @@
+# Full EthicLens stack: `docker compose up --build`
+#   web  http://localhost:5173   ·   api  http://localhost:8000/docs   ·   mlflow :5000
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ethiclens
+      POSTGRES_PASSWORD: ethiclens
+      POSTGRES_DB: ethiclens
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ethiclens"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: { context: ., dockerfile: infra/docker/Dockerfile.api }
+    environment:
+      DATABASE_URL: postgresql+asyncpg://ethiclens:ethiclens@postgres:5432/ethiclens
+      REDIS_URL: redis://redis:6379/0
+      EAGER_TASKS: "false"
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  worker:
+    build: { context: ., dockerfile: infra/docker/Dockerfile.api }
+    command: ["worker"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://ethiclens:ethiclens@postgres:5432/ethiclens
+      REDIS_URL: redis://redis:6379/0
+      EAGER_TASKS: "false"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  web:
+    build: { context: ./apps/web, dockerfile: Dockerfile }
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    ports: ["5173:80"]
+    depends_on: [api]
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.16.2
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:////mlflow/mlflow.db
+    ports: ["5000:5000"]
+    volumes: ["mlflowdata:/mlflow"]
+
+volumes:
+  pgdata:
+  mlflowdata:
