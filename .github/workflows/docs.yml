@@ -16,9 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
       - run: uv pip install --system mkdocs-material
       # Not --strict: docs intentionally link to source files outside docs/ (valid on GitHub).
       - run: mkdocs build
