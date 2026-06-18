@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import gradio as gr
 import pandas as pd
 
 from fairness_core import mitigate_and_reaudit, run_audit
@@ -129,7 +128,9 @@ def _bar(groups, values, colors):
     return fig
 
 
-def build() -> gr.Blocks:
+def build() -> Any:
+    import gradio as gr
+
     with gr.Blocks(title="EthicLens — AI Bias Workbench") as demo:
         gr.Markdown(
             "# ⚖️ EthicLens — AI Bias Detection & Mitigation\n"

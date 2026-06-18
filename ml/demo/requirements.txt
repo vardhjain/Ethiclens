@@ -1,9 +1,10 @@
 # Hugging Face Spaces (Gradio SDK) demo dependencies.
-# fairness-core is installed from the repository checked out into the Space.
+# fairness-core is installed straight from the GitHub repo subdirectory, so this
+# Space is fully self-contained (no need to publish the package to PyPI).
 gradio>=4.44
 scikit-learn>=1.4
 fairlearn>=0.10
 matplotlib>=3.8
 pandas>=2.1
 numpy>=1.26
--e ./packages/fairness-core
+git+https://github.com/vardhjain/Ethiclens.git#subdirectory=packages/fairness-core
