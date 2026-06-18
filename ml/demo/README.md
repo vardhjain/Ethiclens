@@ -5,10 +5,13 @@ colorFrom: teal
 colorTo: indigo
 sdk: gradio
 sdk_version: 4.44.0
-app_file: ml/demo/app.py
+app_file: app.py
 pinned: true
 license: mit
 ---
+
+> Deploy: this Space = the contents of `ml/demo/` (upload `app.py`, `requirements.txt`, and this
+> `README.md` to the Space root). `requirements.txt` installs `fairness-core` straight from GitHub.
 
 # EthicLens — live demo
 
