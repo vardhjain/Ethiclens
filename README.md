@@ -8,6 +8,9 @@ Unifies fairness **detection**, prescriptive **mitigation**, and formal **govern
 in one tool — for compliance officers as well as ML engineers. Built for EU AI Act / EEOC
 audit requirements.
 
+**[▶ Try the live demo](https://huggingface.co/spaces/vardhjain20/Ethiclens)** &nbsp;·&nbsp; **[📖 Docs](https://vardhjain.github.io/Ethiclens/)**
+
+[![Live Demo](https://img.shields.io/badge/%F0%9F%A4%97-Live%20Demo-yellow)](https://huggingface.co/spaces/vardhjain20/Ethiclens)
 [![ci-python](https://github.com/vardhjain/Ethiclens/actions/workflows/ci-python.yml/badge.svg)](https://github.com/vardhjain/Ethiclens/actions/workflows/ci-python.yml)
 [![golden-audit](https://github.com/vardhjain/Ethiclens/actions/workflows/golden-audit.yml/badge.svg)](https://github.com/vardhjain/Ethiclens/actions/workflows/golden-audit.yml)
 [![security](https://github.com/vardhjain/Ethiclens/actions/workflows/security.yml/badge.svg)](https://github.com/vardhjain/Ethiclens/actions/workflows/security.yml)
@@ -123,8 +126,9 @@ numbers can never diverge between "what the demo shows" and "what the service co
 
 ## Live demo & notebook
 
-- ▶ **Interactive demo** ([`ml/demo/app.py`](ml/demo/app.py)) — a Gradio app (deployable to
-  Hugging Face Spaces) that audits a biased model and applies a measured mitigation in the browser.
+- ▶ **[Interactive live demo](https://huggingface.co/spaces/vardhjain20/Ethiclens)** — a Gradio app
+  (source: [`ml/demo/app.py`](ml/demo/app.py)) that audits a biased model and applies a measured
+  mitigation in the browser.
 - 📓 **Narrative notebook** — [*Why synthetic-persona auditing is broken — and the fix*](ml/notebooks/why_synthetic_auditing_is_broken.py),
   including the **impossibility theorem** demonstration:
 
