@@ -30,8 +30,8 @@ jobs:
         run: |
           uv pip install --system \
             -e "packages/fairness-core[validation,viz,cli]" \
-            -e services/api \
-            pytest pytest-cov pytest-asyncio hypothesis ruff mypy pandas-stubs joblib
+            -e "services/api[test]" \
+            pytest pytest-cov pytest-asyncio hypothesis ruff mypy pandas-stubs joblib httpx
       - name: Ruff lint
         run: ruff check .
       - name: Ruff format check
