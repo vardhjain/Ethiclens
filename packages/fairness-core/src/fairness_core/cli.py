@@ -64,7 +64,7 @@ def render_scorecard(result: AuditResult, title: str = "EthicLens Fairness Score
     flagged = [g.group_label for g in result.flagged_groups]
     if flagged:
         lines.append(f"[!] {len(flagged)} flagged group(s): {', '.join(flagged)}")
-        lines.append("    A group is flagged only when its DI confidence interval is below 0.80.")
+        lines.append("    Flagged when the DI CI is below 0.80 OR the Equalized-Odds gap is large.")
     else:
         lines.append("[OK] No groups flagged below the 0.80 four-fifths threshold.")
     lines.append(bar)

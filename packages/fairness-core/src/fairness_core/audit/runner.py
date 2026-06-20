@@ -27,14 +27,21 @@ from fairness_core.metrics import (
     calculate_spd,
     classify_composite_score,
     classify_disparate_impact,
+    classify_equalized_odds,
     classify_spd,
     compute_composite_bias_score,
     compute_group_rates,
 )
 from fairness_core.seeds import DEFAULT_SEED
-from fairness_core.stats import disparate_impact_ci, has_sufficient_data, two_proportion_ztest
+from fairness_core.stats import (
+    disparate_impact_ci,
+    equalized_odds_ci,
+    has_sufficient_data,
+    two_proportion_ztest,
+)
 from fairness_core.types import (
     DI_THRESHOLD,
+    EO_THRESHOLD,
     AuditResult,
     Classification,
     GroupAuditResult,
@@ -189,7 +196,7 @@ def _audit_pair(
 
     # --- Disparate Impact --------------------------------------------------
     di_val: float | None = None
-    flagged = False
+    flagged_di = False
     try:
         di_val = calculate_disparate_impact(p.selection_rate, u.selection_rate)
     except ValueError:
@@ -212,9 +219,9 @@ def _audit_pair(
         )
         # Flag on the CI when we have one (excludes 0.80 below), else point estimate.
         if di_ci is not None and not np.isnan(di_ci.high):
-            flagged = di_ci.high < di_threshold
+            flagged_di = di_ci.high < di_threshold
         else:
-            flagged = di_val < di_threshold
+            flagged_di = di_val < di_threshold
         cls = (
             Classification.INSUFFICIENT_DATA.value
             if not enough
@@ -245,6 +252,9 @@ def _audit_pair(
     )
 
     # --- Equalized Odds (requires labels) ---------------------------------
+    # Error-rate bias (e.g. COMPAS) is invisible to the selection-rate DI rule, so we
+    # also flag when we are statistically confident the Equalized-Odds gap is large.
+    flagged_eo = False
     if (
         y_true is not None
         and p.tpr is not None
@@ -253,10 +263,30 @@ def _audit_pair(
         and u.fpr is not None
     ):
         eo_val = calculate_eo(p.tpr, p.fpr, u.tpr, u.fpr)
+        n_pos = round((u.base_rate or 0.0) * u.n)
+        enough_eo = has_sufficient_data(u.n, n_pos, u.n - n_pos, error_metric=True)
+        eo_ci = (
+            equalized_odds_ci(
+                sensitive, y_pred, y_true, priv_value, unpriv_value, n_boot=n_boot, seed=seed
+            )
+            if compute_ci and enough_eo
+            else None
+        )
+        if eo_ci is not None and not np.isnan(eo_ci.low):
+            flagged_eo = eo_ci.low > EO_THRESHOLD
+        else:
+            flagged_eo = eo_val > EO_THRESHOLD
+        eo_cls = (
+            Classification.INSUFFICIENT_DATA.value
+            if not enough_eo
+            else classify_equalized_odds(eo_val)
+        )
         metrics[MetricName.EQUALIZED_ODDS.value] = MetricResult(
             name=MetricName.EQUALIZED_ODDS.value,
             value=eo_val,
             group_label=label,
+            classification=eo_cls,
+            ci=eo_ci,
             n=u.n,
             details={
                 "tpr_priv": p.tpr,
@@ -283,7 +313,7 @@ def _audit_pair(
         n_privileged=p.n,
         n_unprivileged=u.n,
         metrics=metrics,
-        flagged=flagged,
+        flagged=flagged_di or flagged_eo,
     )
 
 

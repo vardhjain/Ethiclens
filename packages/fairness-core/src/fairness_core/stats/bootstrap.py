@@ -23,6 +23,7 @@ __all__ = [
     "MIN_SUBGROUP_FOR_RATES",
     "bootstrap_ci",
     "disparate_impact_ci",
+    "equalized_odds_ci",
     "has_sufficient_data",
     "two_proportion_ztest",
 ]
@@ -176,3 +177,46 @@ def disparate_impact_ci(
         return _di_statistic(sens, pred, privileged_value, unprivileged_value)
 
     return bootstrap_ci(stat, s, yp, n_boot=n_boot, level=level, seed=seed)
+
+
+def _eo_statistic(
+    sensitive: NDArray, y_pred: NDArray, y_true: NDArray, priv: object, unpriv: object
+) -> float:
+    p_mask, u_mask = sensitive == priv, sensitive == unpriv
+    if not p_mask.any() or not u_mask.any():
+        return float("nan")
+
+    def _rates(mask: NDArray) -> tuple[float | None, float | None]:
+        yt, yp = y_true[mask], y_pred[mask]
+        pos, neg = yt == 1, yt == 0
+        if not pos.any() or not neg.any():
+            return None, None
+        return float(np.mean(yp[pos])), float(np.mean(yp[neg]))
+
+    tpr_p, fpr_p = _rates(p_mask)
+    tpr_u, fpr_u = _rates(u_mask)
+    if None in (tpr_p, fpr_p, tpr_u, fpr_u):
+        return float("nan")
+    return max(abs(tpr_p - tpr_u), abs(fpr_p - fpr_u))  # type: ignore[operator]
+
+
+def equalized_odds_ci(
+    sensitive: ArrayLike,
+    y_pred: ArrayLike,
+    y_true: ArrayLike,
+    privileged_value: object,
+    unprivileged_value: object,
+    *,
+    n_boot: int = 2000,
+    level: float = 0.95,
+    seed: int = DEFAULT_SEED,
+) -> ConfidenceInterval:
+    """Bootstrap CI for the Equalized-Odds gap (max TPR/FPR difference) of one group."""
+    s = np.asarray(sensitive)
+    yp = (np.asarray(y_pred) == 1).astype(int)
+    yt = (np.asarray(y_true) == 1).astype(int)
+
+    def stat(sens: NDArray, pred: NDArray, true: NDArray) -> float:
+        return _eo_statistic(sens, pred, true, privileged_value, unprivileged_value)
+
+    return bootstrap_ci(stat, s, yp, yt, n_boot=n_boot, level=level, seed=seed)

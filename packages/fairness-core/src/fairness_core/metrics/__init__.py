@@ -24,6 +24,7 @@ from fairness_core.metrics.disparate_impact import (
 from fairness_core.metrics.equalized_odds import (
     average_odds_difference,
     calculate_eo,
+    classify_equalized_odds,
     equal_opportunity_difference,
 )
 from fairness_core.metrics.extra import (
@@ -51,6 +52,7 @@ __all__ = [
     "SPD_ACCEPTABLE",
     # Equalized Odds family
     "calculate_eo",
+    "classify_equalized_odds",
     "equal_opportunity_difference",
     "average_odds_difference",
     # Composite

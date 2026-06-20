@@ -19,6 +19,10 @@ DI_THRESHOLD: float = 0.80
 #: |SPD| below this is considered acceptable (open interval, per the STP glossary).
 SPD_ACCEPTABLE: float = 0.10
 
+#: An Equalized-Odds gap (max TPR/FPR difference) above this is flagged. This lets the
+#: audit catch error-rate bias (e.g. COMPAS) that the selection-rate 4/5ths rule misses.
+EO_THRESHOLD: float = 0.10
+
 #: Default composite-score weights (Disparate Impact / SPD / Equalized Odds).
 DEFAULT_COMPOSITE_WEIGHTS: dict[str, float] = {"di": 0.40, "spd": 0.35, "eo": 0.25}
 

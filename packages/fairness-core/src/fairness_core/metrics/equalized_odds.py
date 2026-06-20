@@ -16,11 +16,19 @@ Definitions (privileged group ``p``, unprivileged group ``u``):
 
 from __future__ import annotations
 
+from fairness_core.types import EO_THRESHOLD, Classification
+
 __all__ = [
     "average_odds_difference",
     "calculate_eo",
+    "classify_equalized_odds",
     "equal_opportunity_difference",
 ]
+
+
+def classify_equalized_odds(eo: float, threshold: float = EO_THRESHOLD) -> str:
+    """``Flagged`` if the Equalized-Odds gap exceeds ``threshold`` else ``Acceptable``."""
+    return Classification.FLAGGED.value if eo > threshold else Classification.ACCEPTABLE.value
 
 
 def calculate_eo(

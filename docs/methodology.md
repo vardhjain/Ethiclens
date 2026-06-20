@@ -87,8 +87,10 @@ The weighting rationale is recorded in [`adr/0001-composite-weights.md`](adr/000
 - **Significance** — a pooled two-proportion z-test on the selection-rate gap.
 - **Minimum subgroups** — ≥ 100 for stable rates; ≥ 30 positives **and** ≥ 30 negatives for error
   metrics. Below the floor → `INSUFFICIENT_DATA`.
-- **Flagging policy** — a group is flagged only when its DI **confidence interval lies entirely
-  below 0.80**, so 0.79-vs-0.81 subgroup noise does not flip the verdict.
+- **Flagging policy** — a group is flagged when its DI **confidence interval lies entirely below
+  0.80**, *or* when its **Equalized-Odds CI lower bound exceeds 0.10**. This catches both
+  selection-rate bias (hiring/lending) *and* error-rate bias (e.g. COMPAS, where the DI rule alone
+  is blind), while subgroup noise alone never flips the verdict.
 
 ## References
 
