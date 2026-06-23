@@ -42,7 +42,10 @@ ignore = ["RUF022", "B008"]
 
 # --- mypy (strict on the engine) -------------------------------------------
 [tool.mypy]
-python_version = "3.11"
+# Target 3.12 for static analysis so mypy can parse modern dependency stubs
+# (e.g. numpy's PEP 695 `type` statements). Runtime support for 3.11 is still
+# verified by the pytest matrix.
+python_version = "3.12"
 # Several third-party override blocks are forward-looking (used once the API
 # imports onnx/aif360), so unused-config warnings are not meaningful here.
 warn_unused_configs = false
