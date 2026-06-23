@@ -61,6 +61,20 @@ When base rates differ between groups, predictive parity and equalized odds **ca
 (Chouldechova 2017; Kleinberg, Mullainathan & Raghavan 2016). EthicLens shows PPV and FPR side by
 side on COMPAS precisely so this trade-off is visible rather than hidden behind a single metric.
 
+### Worked example: COMPAS
+Auditing a recidivism model on the real COMPAS data (`python -m ml.cli.audit_dataset compas`), the
+engine measures a **false-positive rate of 0.24 for African-American vs 0.11 for Caucasian
+defendants** — Black defendants who did *not* reoffend are labelled high-risk about **twice as
+often** (the ProPublica 2016 finding), with reasonably similar PPV. The base rates differ
+(≈ 0.54 vs 0.37), so by the impossibility theorem the two cannot be equalised at once.
+
+Crucially, **Disparate Impact alone misses this**: recidivism is an *adverse* outcome that is
+*over*-assigned to the unprivileged group, and the 4/5ths rule only catches *under*-selection. So
+EthicLens flags a group when **either** its DI confidence interval is below 0.80 **or** its
+Equalized-Odds CI lower bound exceeds 0.10 — covering both favorable-outcome (hiring/lending) and
+adverse-outcome (risk-scoring) decisions. On COMPAS this correctly flags `race:African-American`
+via Equalized Odds even though its DI (≈ 2.5) sails past the selection-rate rule.
+
 ## Composite Bias Score
 
 A 0–1 fairness-*goodness* score (higher = fairer). Each component is normalised to a sub-score,

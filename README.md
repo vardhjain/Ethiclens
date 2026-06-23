@@ -93,6 +93,25 @@ race:Asian              1.020   [0.97,1.07]   0.014   0.031      ok
 `ethiclens-audit mitigate` then ranks fixes and applies the top one, re-auditing on held-out
 data — e.g. ThresholdOptimizer drives **race:Black DI 0.36 → 0.91 (crosses 0.80)** for ~1% accuracy.
 
+## Auditing real benchmarks — why one metric isn't enough
+
+The same engine audits any classifier on real labelled benchmarks
+(`python -m ml.cli.audit_dataset compas`). Running it on two famous datasets shows why a serious
+audit needs **both** selection-rate *and* error-rate metrics:
+
+| Dataset | Outcome | Most-affected group | DI | Equalized Odds | Flagged by |
+|---|---|---|---:|---:|---|
+| **COMPAS** — recidivism (*adverse*) | "will reoffend" | race: African-American | 2.50 | **0.34** | **Equalized Odds** |
+| **Adult** — income (*favorable*) | "earns > $50k" | sex: Female | **0.51** | 0.01 | **Disparate Impact** |
+
+On **COMPAS** the Disparate-Impact rule is *blind*: African-American defendants are flagged
+high-risk *more* often, which the 4/5ths under-selection rule ignores — but their **false-positive
+rate is ~2× higher (0.24 vs 0.11)**, the real [ProPublica finding](https://www.propublica.org/article/machine-bias-risk-assessments-in-criminal-sentencing),
+caught by **Equalized Odds**. On **Adult** it's the reverse — women are predicted to earn >$50k at
+half the rate of men, caught by **Disparate Impact**. EthicLens flags on *either*, so it covers
+both hiring/lending-style (favorable) and risk-scoring (adverse) decisions. See
+[methodology](docs/methodology.md#worked-example-compas).
+
 ## Architecture
 
 A three-tier system around one shared, audited fairness engine.
