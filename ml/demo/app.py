@@ -335,7 +335,7 @@ def build() -> Any:
                 "execute your model — so it's safe. Columns you need:\n"
                 "- a **prediction** column (0/1 labels, or scores in [0,1]),\n"
                 "- a **protected attribute** column (e.g. race, sex),\n"
-                "- *(optional)* a **true-label** column — needed for Equalized Odds / error rates.\n\n"
+                "- *(optional)* a **true-label** column — needed for Equalized Odds.\n\n"
                 "Tip: in your code, `df['prediction'] = model.predict(X_test)`, add the true label "
                 "and the protected attribute, then `df.to_csv(...)`."
             )
