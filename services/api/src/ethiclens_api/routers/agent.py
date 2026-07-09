@@ -10,18 +10,27 @@ unconfirmed guess" and "no data persistence" guardrails:
    resulting scorecard/narrative, never the raw rows.
 3. ``POST /api/agent/records/{id}/ask`` — Stage 5: ask a grounded question about a
    stored record; retrieves from its scorecard JSON, never from model memory.
+4. ``GET /api/agent/demo-datasets`` / ``POST /api/agent/demo-audit`` — one-click
+   canned datasets shipped with the app, so a visitor never has to bring their own
+   CSV. Skips Stage 1 (the proposal is hand-verified, checked into
+   ``agent/demo_datasets.py``) but otherwise runs the identical Stages 2-4 pipeline
+   as ``run-audit``, via the same ``_run_and_persist`` helper.
 """
 
 from __future__ import annotations
 
+from functools import lru_cache
+from pathlib import Path
 from uuid import UUID
 
+import pandas as pd
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ethiclens_api.agent.audit_planner import plan_audit
 from ethiclens_api.agent.csv_ingest import read_predictions_csv
+from ethiclens_api.agent.demo_datasets import get_demo_dataset, list_demo_datasets
 from ethiclens_api.agent.executor import execute_plan, measure_top_mitigation
 from ethiclens_api.agent.llm_client import build_default_client_or_none
 from ethiclens_api.agent.narrative import build_scorecard, generate_narrative, unavailable_result
@@ -44,6 +53,64 @@ async def _owned_record(
     if record is None or record.owner_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Audit record not found")
     return record
+
+
+async def _run_and_persist(
+    proposal: SchemaInferenceProposal,
+    data: pd.DataFrame,
+    db: AsyncSession,
+    user: UserAccount,
+) -> dict:
+    """Stages 2-4 shared by ``/run-audit`` and ``/demo-audit``: plan, execute, measure
+    mitigation, generate narrative, persist only the derived scorecard/narrative."""
+    missing = [
+        col
+        for col in [proposal.outcome_column, *proposal.protected_attribute_columns]
+        if col not in data.columns
+    ]
+    if missing:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Columns not found in CSV: {missing}")
+
+    settings = get_settings()
+    plan = plan_audit(proposal, data)
+    result = execute_plan(plan, data, proposal.outcome_direction)
+    # Real, held-out-measured before/after — only possible while the CSV is still in
+    # memory (never persisted); unavailable without a score column + true labels.
+    measured_mitigation = measure_top_mitigation(plan, data, proposal.outcome_direction, result)
+    scorecard, _recommendations = build_scorecard(result, plan, measured_mitigation)
+
+    client = build_default_client_or_none(settings.groq_api_key, settings.gemini_api_key)
+    if client is not None and await has_budget(db, settings.agent_daily_llm_call_cap):
+        narrative_result = generate_narrative(client, scorecard)
+        await record_llm_call(db)
+    else:
+        narrative_result = unavailable_result(scorecard)
+
+    record = AgentAuditRecord(
+        owner_id=user.id,
+        outcome_column=plan.outcome_column,
+        protected_attribute_columns=plan.protected_attribute_columns,
+        true_label_column=plan.true_label_column,
+        plan=plan.model_dump(),
+        scorecard=scorecard,
+        narrative=narrative_result.output.narrative,
+        mitigation_summary=narrative_result.output.mitigation_summary,
+        grounded=narrative_result.grounded,
+        degraded=narrative_result.degraded,
+    )
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+
+    return {
+        "record_id": str(record.id),
+        "plan": plan.model_dump(),
+        "scorecard": scorecard,
+        "narrative": narrative_result.output.narrative,
+        "mitigation_summary": narrative_result.output.mitigation_summary,
+        "grounded": narrative_result.grounded,
+        "degraded": narrative_result.degraded,
+    }
 
 
 @router.post("/propose-schema", response_model=SchemaInferenceProposal)
@@ -98,54 +165,51 @@ async def run_audit_endpoint(
     data = await read_predictions_csv(
         file, max_mb=settings.agent_max_upload_mb, max_rows=settings.agent_max_rows
     )
+    return await _run_and_persist(proposal, data, db, user)
 
-    missing = [
-        col
-        for col in [proposal.outcome_column, *proposal.protected_attribute_columns]
-        if col not in data.columns
+
+class DemoDatasetOut(BaseModel):
+    key: str
+    title: str
+    blurb: str
+    proposal: SchemaInferenceProposal
+
+
+class DemoAuditRequest(BaseModel):
+    dataset_key: str
+    proposal: SchemaInferenceProposal | None = None
+
+
+@lru_cache(maxsize=8)
+def _load_demo_dataframe(csv_path: str) -> pd.DataFrame:
+    return pd.read_csv(Path(csv_path))
+
+
+@router.get("/demo-datasets", response_model=list[DemoDatasetOut])
+async def demo_datasets_list() -> list[DemoDatasetOut]:
+    """Canned datasets shipped with the app — the primary, upload-free demo path."""
+    return [
+        DemoDatasetOut(key=d.key, title=d.title, blurb=d.blurb, proposal=d.proposal)
+        for d in list_demo_datasets()
     ]
-    if missing:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Columns not found in CSV: {missing}")
 
-    plan = plan_audit(proposal, data)
-    result = execute_plan(plan, data, proposal.outcome_direction)
-    # Real, held-out-measured before/after — only possible while the CSV is still in
-    # memory (never persisted); unavailable without a score column + true labels.
-    measured_mitigation = measure_top_mitigation(plan, data, proposal.outcome_direction, result)
-    scorecard, _recommendations = build_scorecard(result, plan, measured_mitigation)
 
-    client = build_default_client_or_none(settings.groq_api_key, settings.gemini_api_key)
-    if client is not None and await has_budget(db, settings.agent_daily_llm_call_cap):
-        narrative_result = generate_narrative(client, scorecard)
-        await record_llm_call(db)
-    else:
-        narrative_result = unavailable_result(scorecard)
-
-    record = AgentAuditRecord(
-        owner_id=user.id,
-        outcome_column=plan.outcome_column,
-        protected_attribute_columns=plan.protected_attribute_columns,
-        true_label_column=plan.true_label_column,
-        plan=plan.model_dump(),
-        scorecard=scorecard,
-        narrative=narrative_result.output.narrative,
-        mitigation_summary=narrative_result.output.mitigation_summary,
-        grounded=narrative_result.grounded,
-        degraded=narrative_result.degraded,
-    )
-    db.add(record)
-    await db.commit()
-    await db.refresh(record)
-
-    return {
-        "record_id": str(record.id),
-        "plan": plan.model_dump(),
-        "scorecard": scorecard,
-        "narrative": narrative_result.output.narrative,
-        "mitigation_summary": narrative_result.output.mitigation_summary,
-        "grounded": narrative_result.grounded,
-        "degraded": narrative_result.degraded,
-    }
+@router.post("/demo-audit", status_code=status.HTTP_201_CREATED)
+async def demo_audit_endpoint(
+    body: DemoAuditRequest,
+    db: AsyncSession = Depends(get_session),
+    user: UserAccount = Depends(get_current_user),
+) -> dict:
+    """Run Stages 2-4 against a canned dataset. Skips Stage 1 (LLM schema inference) —
+    the proposal is hand-verified and checked into ``agent/demo_datasets.py`` — but a
+    caller may still pass an edited ``proposal``, preserving the human-confirmation step.
+    """
+    dataset = get_demo_dataset(body.dataset_key)
+    if dataset is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Unknown demo dataset '{body.dataset_key}'")
+    proposal = body.proposal or dataset.proposal
+    data = _load_demo_dataframe(str(dataset.csv_path))
+    return await _run_and_persist(proposal, data, db, user)
 
 
 @router.get("/records/{record_id}")

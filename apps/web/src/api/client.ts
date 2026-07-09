@@ -181,6 +181,12 @@ export interface AskResponse {
   grounded: boolean;
   degraded: boolean;
 }
+export interface DemoDataset {
+  key: string;
+  title: string;
+  blurb: string;
+  proposal: SchemaInferenceProposal;
+}
 
 // --- Endpoints ------------------------------------------------------------
 
@@ -224,5 +230,11 @@ export const api = {
     request<AskResponse>(`/agent/records/${id}/ask`, {
       method: "POST",
       body: JSON.stringify({ question }),
+    }),
+  demoDatasets: () => request<DemoDataset[]>("/agent/demo-datasets"),
+  runDemoAudit: (datasetKey: string, proposal?: SchemaInferenceProposal) =>
+    request<AgentRunResult>("/agent/demo-audit", {
+      method: "POST",
+      body: JSON.stringify({ dataset_key: datasetKey, proposal }),
     }),
 };

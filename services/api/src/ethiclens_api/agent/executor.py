@@ -138,6 +138,13 @@ def measure_top_mitigation(
     if privileged_value is None or unprivileged_value is None:
         return None
 
+    # Fairlearn's ThresholdOptimizer requires every sensitive-feature value present in
+    # the data to have both label classes ("non-degenerate"). A real-world protected
+    # attribute often has more than two categories (e.g. COMPAS's six race values); pass
+    # only the privileged/unprivileged pair being compared, not the whole column, or a
+    # tiny unrelated category (e.g. n=3) can fail the whole optimizer.
+    working = working[working[group.attribute].isin([privileged_value, unprivileged_value])]
+
     model = _PassthroughModel(
         working[plan.outcome_column], direction, scores=working[plan.score_column]
     )
