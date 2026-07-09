@@ -50,3 +50,6 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Local agent tooling (machine-specific settings/permissions, dev launch config)
+.claude/

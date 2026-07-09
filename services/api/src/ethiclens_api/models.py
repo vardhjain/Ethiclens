@@ -213,3 +213,40 @@ class MitigationLog(Base):
     session: Mapped[AuditSession] = relationship(
         back_populates="mitigations", foreign_keys=[session_id]
     )
+
+
+class AgentAuditRecord(Base):
+    """A completed run of the agent pipeline (Stages 1-4).
+
+    Only the derived scorecard/narrative are persisted — never the uploaded CSV's raw
+    rows — per the hosted-deployment "no data persistence" guardrail. This also backs
+    Stage 5 (grounded Q&A), which retrieves from ``scorecard`` rather than re-deriving.
+    """
+
+    __tablename__ = "agent_audit_record"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("user_account.id"), index=True)
+    outcome_column: Mapped[str] = mapped_column(String(128))
+    protected_attribute_columns: Mapped[list] = mapped_column(JSON, default=list)
+    true_label_column: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    plan: Mapped[dict] = mapped_column(JSON, default=dict)
+    scorecard: Mapped[dict] = mapped_column(JSON, default=dict)
+    narrative: Mapped[str] = mapped_column(Text, default="")
+    mitigation_summary: Mapped[str] = mapped_column(Text, default="")
+    grounded: Mapped[bool] = mapped_column(Boolean, default=False)
+    degraded: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class UsageCounter(Base):
+    """One row per UTC calendar day: how many LLM calls the agent has made.
+
+    Backs the "hard-stop at ~80% of free quota, degrade gracefully" cost guardrail —
+    checked before every LLM call in the agent router, not after.
+    """
+
+    __tablename__ = "usage_counter"
+
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)  # "YYYY-MM-DD"
+    llm_calls: Mapped[int] = mapped_column(Integer, default=0)

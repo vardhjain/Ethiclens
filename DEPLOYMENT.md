@@ -1,0 +1,134 @@
+# Deploying EthicLens (hosted agent demo)
+
+Free-tier deployment: **Google Cloud Run** for the API, **Supabase** (Postgres)
+for storage, **Vercel** for the frontend. Total recurring cost: $0 for
+low-traffic use.
+
+Cloud Run's free tier is generous enough for this: 180,000 vCPU-seconds +
+360,000 GiB-seconds + 2,000,000 requests per month, and it scales to zero
+between requests (no idle cost — a cold start is expected and fine for a
+portfolio demo). Originally this targeted Hugging Face Spaces (Docker), but as
+of 2026-07-08 HF started gating the Docker SDK behind a paid plan for new
+Spaces with no prior notice — Cloud Run is the fallback.
+
+This is a demonstration deployment, not production infrastructure — see
+LIMITATIONS.md. No uptime guarantee.
+
+## 1. Supabase (Postgres)
+
+1. Create a project at supabase.com (free tier).
+2. Project Settings → Database → Connection string → **URI**, "Session pooler"
+   mode (works better than the direct connection from a serverless/container
+   client). It looks like:
+   `postgresql://postgres.xxxx:PASSWORD@aws-0-region.pooler.supabase.com:5432/postgres`
+3. Convert it to the async driver EthicLens expects — replace
+   `postgresql://` with `postgresql+asyncpg://`. Save this as `DATABASE_URL`;
+   you'll paste it into both the Cloud Run service (step 2) and a GitHub
+   Actions secret (step 4).
+4. Nothing else to create manually — `alembic upgrade head` runs automatically
+   on container start (see `infra/docker/entrypoint-cloudrun.sh`) and creates
+   every table from `services/api/src/ethiclens_api/models.py`.
+
+Handle the password carefully: never paste it into a chat, issue tracker, or
+anywhere outside your password manager / the actual secret store (Supabase,
+`gcloud`, GitHub Actions secrets). If a password was ever pasted somewhere
+insecure, rotate it (Project Settings → Database → reset password) before
+using it. If the password contains URI-reserved characters
+(`: / ? # [ ] @ ! $ & ' ( ) * + , ; =`), URL-encode just the password segment
+before building the connection string.
+
+## 2. Google Cloud Run
+
+Prereqs: a Google Cloud account (needs a card on file for identity
+verification — this does not mean you'll be charged; Cloud Run simply won't
+bill anything within the free-tier limits above) and the `gcloud` CLI
+installed and authenticated (`gcloud init`).
+
+1. Create/select a GCP project, then enable the required APIs:
+   ```
+   gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com
+   ```
+2. From the repo root, deploy directly from source — Cloud Build reads the
+   root `Dockerfile` (adapted from `infra/docker/Dockerfile.api`; that one
+   stays for local `docker-compose`, which still runs the enterprise arq
+   worker for the non-agent `/sessions` flow):
+   ```
+   gcloud run deploy ethiclens-api \
+     --source . \
+     --region us-central1 \
+     --allow-unauthenticated \
+     --set-env-vars EAGER_TASKS=true \
+     --set-env-vars DATABASE_URL="<postgresql+asyncpg://... from step 1>" \
+     --set-env-vars SECRET_KEY="<any long random string>" \
+     --set-env-vars GROQ_API_KEY="<from console.groq.com>"
+   ```
+   Add `--set-env-vars GEMINI_API_KEY="..."` too if you have one (optional
+   fallback provider). For anything beyond a personal demo, prefer
+   `--set-secrets` backed by Secret Manager over `--set-env-vars` for
+   `DATABASE_URL`/`SECRET_KEY`/`*_API_KEY` — plain env vars are visible to
+   anyone with read access to the Cloud Run service config.
+3. The command prints a **Service URL** when it finishes
+   (`https://ethiclens-api-xxxxxxxxxx-uc.a.run.app`). Confirm
+   `<service-url>/health` returns `{"status":"ok",...}` and `<service-url>/docs`
+   loads the FastAPI docs.
+
+### Redeploying after code changes
+
+Re-run the same `gcloud run deploy` command (or just `gcloud run deploy
+ethiclens-api --source .` if the env vars are already set — Cloud Run keeps
+existing env vars across deploys unless you explicitly change them). No git
+remote or manual sync step needed; it builds straight from your local working
+tree via Cloud Build.
+
+## 3. Vercel (frontend)
+
+1. Import the GitHub repo into Vercel. Root directory: `apps/web`. Framework
+   preset: Vite (auto-detected). Build command / output dir: defaults are
+   correct (`npm run build`, `dist`).
+2. Edit `apps/web/vercel.json` — replace
+   `REPLACE-WITH-YOUR-CLOUD-RUN-URL` with your actual Cloud Run service URL
+   from step 2 (no trailing slash). This makes `/api/*` requests from the
+   browser transparently proxy to Cloud Run, so the existing frontend code
+   (`src/api/client.ts`'s relative `/api${path}` fetches) needs **zero
+   changes** — same-origin from the browser's point of view, no CORS
+   configuration needed.
+3. Deploy. Vercel gives you a `*.vercel.app` URL.
+
+## 4. GitHub Actions keep-alive
+
+`.github/workflows/keep-alive.yml` pings the Cloud Run service's `/health`
+(mostly just a smoke test / pre-warm — Cloud Run scaling to zero between
+requests is expected behavior, not a problem to work around) and runs
+`SELECT 1` against Supabase daily, since **Supabase does pause after ~1 week
+idle** and that's the one thing actually worth guarding against here.
+
+Repo → Settings → Secrets and variables → Actions:
+- Add **variable** `API_URL` = your Cloud Run service URL (not secret — it's
+  public anyway).
+- Add **secret** `SUPABASE_DATABASE_URL` = the same connection string from
+  step 1 (plain `postgresql://`, not `+asyncpg` — `psql` doesn't understand
+  the asyncpg driver suffix).
+
+The workflow no-ops on either step until its corresponding secret/variable is
+set, so merging it before you've done steps 1-3 is safe.
+
+## 5. Verify end-to-end
+
+1. Visit the Vercel URL, register an account, log in.
+2. "Agent audit" → upload a predictions CSV → confirm the proposed schema →
+   run. You should get a real narrative (if `GROQ_API_KEY`/`GEMINI_API_KEY`
+   are set and valid) or the numeric-only degraded fallback (if not, or if the
+   daily LLM budget cap is hit — see `agent_daily_llm_call_cap` in
+   `config.py`).
+3. Ask a question in the chat panel; confirm it's grounded in the scorecard.
+
+## What's intentionally not enabled here
+
+- **Per-IP rate limiting** (slowapi, ~5 audits/IP/day from the original plan)
+  — deferred until this is genuinely public-facing; not worth the dependency
+  against a demo only you and recruiters will hit.
+- **Model file uploads** — the agent pipeline only ever accepted predictions
+  CSVs, never model files, so there's nothing to disable here; it was
+  designed this way from the start (see agent/csv_ingest.py).
+- **arq/Redis worker** — not deployed at all; `EAGER_TASKS=true` makes it
+  unnecessary (see `ethiclens_api/tasks.py`).

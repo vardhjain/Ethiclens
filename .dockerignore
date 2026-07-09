@@ -1,0 +1,34 @@
+# Keep the Docker build context (and HF Space upload) lean. Mirrors .gitignore
+# plus a few dev-only directories that don't need to ship in the image.
+
+.git
+.github
+
+.venv
+venv
+__pycache__
+*.py[cod]
+*.egg-info
+.eggs
+.mypy_cache
+.ruff_cache
+.pytest_cache
+.hypothesis
+.coverage
+coverage.xml
+htmlcov
+*.db
+*.sqlite3
+
+node_modules
+apps/web/dist
+apps/web/.vite
+
+data/raw
+data/processed
+data/synthetic
+models/uploaded
+
+ml/notebooks
+docs
+.claude

@@ -27,6 +27,22 @@ class Settings(BaseSettings):
     ingestion_sandbox_timeout_seconds: int = 60
     model_storage_dir: str = "./models/uploaded"
 
+    # --- Agent LLM layer (Stage 1 schema inference, Stage 4 narrative) ---
+    # Groq is tried first (free-tier, fast); Gemini is the fallback. Either or both may
+    # be unset in dev/tests — the agent degrades to "narrative unavailable" without them.
+    groq_api_key: str | None = None
+    gemini_api_key: str | None = None
+
+    # Agent CSV upload caps (predictions-only ingestion; no model files, no persistence
+    # of raw rows — only the resulting audit record is stored).
+    agent_max_upload_mb: int = 5
+    agent_max_rows: int = 50_000
+
+    # Hard daily cap on LLM calls across all users (~80% of a free-tier quota in
+    # practice). Once hit, the agent degrades instead of erroring: schema inference
+    # returns 429, narrative/Q&A fall back to numeric-only / "unavailable" responses.
+    agent_daily_llm_call_cap: int = 200
+
 
 @lru_cache
 def get_settings() -> Settings:

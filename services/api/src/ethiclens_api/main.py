@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ethiclens_api.config import get_settings
 from ethiclens_api.db import create_all
-from ethiclens_api.routers import auth, governance, models, reports, sessions
+from ethiclens_api.routers import agent, auth, governance, models, reports, sessions
 
 DESCRIPTION = (
     "EthicLens API — AI bias detection & mitigation workbench. Upload a model, "
@@ -41,7 +41,15 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    for router in (auth.router, models.router, sessions.router, reports.router, governance.router):
+    routers = (
+        auth.router,
+        models.router,
+        sessions.router,
+        reports.router,
+        governance.router,
+        agent.router,
+    )
+    for router in routers:
         app.include_router(router)
 
     @app.get("/health", tags=["meta"])

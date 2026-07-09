@@ -1,0 +1,32 @@
+name: keep-alive
+
+# Cloud Run scales to zero between requests by design - that's not a problem
+# to work around. Supabase is the one thing that actually idles out (~1 week
+# of inactivity pauses the project), so this is mainly a daily Supabase ping;
+# the API ping is just a smoke test / pre-warm before someone clicks the demo.
+# API_URL / SUPABASE_DATABASE_URL are GitHub repo variable/secret, set once
+# the Cloud Run service and Supabase project exist (see DEPLOYMENT.md).
+
+on:
+  schedule:
+    - cron: "17 9 * * *" # daily, off the hour to avoid GH Actions congestion
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping API /health
+        if: ${{ vars.API_URL != '' }}
+        run: |
+          curl -fsS --max-time 30 "${{ vars.API_URL }}/health"
+
+      - name: Ping Supabase (SELECT 1)
+        if: ${{ secrets.SUPABASE_DATABASE_URL != '' }}
+        env:
+          PGCONNECT_TIMEOUT: "10"
+        run: |
+          psql "${{ secrets.SUPABASE_DATABASE_URL }}" -c "SELECT 1;"

@@ -82,6 +82,106 @@ export interface RecommendationsResponse {
   recommendations: Record<string, Recommendation[]>;
 }
 
+// --- Agent pipeline (Stages 1-5) --------------------------------------------
+
+export interface OutcomeDirection {
+  positive_label_meaning: string;
+  positive_is_favorable: boolean;
+}
+export interface SchemaInferenceProposal {
+  protected_attribute_columns: string[];
+  outcome_column: string;
+  outcome_direction: OutcomeDirection;
+  true_label_column: string | null;
+  score_column: string | null;
+  feature_columns: string[];
+  reasoning: string;
+}
+export interface ExcludedSubgroup {
+  attribute: string;
+  group_value: string;
+  n: number;
+  reason: string;
+}
+export interface AuditPlan {
+  include_equalized_odds: boolean;
+  metrics_reason: string;
+  protected_attribute_columns: string[];
+  outcome_column: string;
+  true_label_column: string | null;
+  score_column: string | null;
+  feature_columns: string[];
+  excluded_subgroups: ExcludedSubgroup[];
+}
+export interface ScorecardMetric {
+  name: string;
+  value: number | null;
+  classification: string | null;
+  ci: { low: number; high: number } | null;
+  n: number | null;
+}
+export interface ScorecardGroup {
+  attribute: string;
+  group_label: string;
+  privileged_value: string;
+  unprivileged_value: string;
+  n_privileged: number;
+  n_unprivileged: number;
+  flagged: boolean;
+  metrics: Record<string, ScorecardMetric>;
+}
+export interface AgentRecommendation {
+  rank: number;
+  strategy: string;
+  strategy_name: string;
+  description: string;
+  estimated_di_improvement: number;
+  stage: string;
+  measured: boolean;
+}
+export interface MeasuredMitigation {
+  strategy: string;
+  stage: string;
+  group_label: string;
+  di_before: number;
+  di_after: number;
+  di_after_ci: { low: number; high: number } | null;
+  accuracy_before: number;
+  accuracy_after: number;
+  di_improvement: number;
+  accuracy_cost: number;
+  crossed_threshold: boolean;
+  n_test: number;
+}
+export interface Scorecard {
+  composite_score: number | null;
+  composite_band: string | null;
+  min_disparate_impact: number | null;
+  has_labels: boolean;
+  metrics_reason: string;
+  excluded_subgroups: ExcludedSubgroup[];
+  groups: ScorecardGroup[];
+  recommendations: Record<string, AgentRecommendation[]>;
+  measured_mitigation: MeasuredMitigation | null;
+}
+export interface AgentRunResult {
+  record_id: string;
+  plan: AuditPlan;
+  scorecard: Scorecard;
+  narrative: string;
+  mitigation_summary: string;
+  grounded: boolean;
+  degraded: boolean;
+}
+export interface AgentRecord extends AgentRunResult {
+  created_at: string;
+}
+export interface AskResponse {
+  answer: string;
+  grounded: boolean;
+  degraded: boolean;
+}
+
 // --- Endpoints ------------------------------------------------------------
 
 export const api = {
@@ -106,4 +206,23 @@ export const api = {
       body: JSON.stringify({ strategy }),
     }),
   reportUrl: (id: string) => `/api/sessions/${id}/report`,
+
+  // --- Agent pipeline ---
+  proposeSchema: (file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return request<SchemaInferenceProposal>("/agent/propose-schema", { method: "POST", body });
+  },
+  runAudit: (file: File, proposal: SchemaInferenceProposal) => {
+    const body = new FormData();
+    body.append("file", file);
+    body.append("proposal_json", JSON.stringify(proposal));
+    return request<AgentRunResult>("/agent/run-audit", { method: "POST", body });
+  },
+  getAgentRecord: (id: string) => request<AgentRecord>(`/agent/records/${id}`),
+  askAgentRecord: (id: string, question: string) =>
+    request<AskResponse>(`/agent/records/${id}/ask`, {
+      method: "POST",
+      body: JSON.stringify({ question }),
+    }),
 };

@@ -12,7 +12,7 @@ COPY services ./services
 
 RUN uv venv /opt/venv && \
     VIRTUAL_ENV=/opt/venv uv pip install --no-cache \
-    -e packages/fairness-core -e services/api
+    -e packages/fairness-core -e "services/api[agent]"
 
 # --- runtime ---------------------------------------------------------------
 FROM python:3.12-slim AS runtime
