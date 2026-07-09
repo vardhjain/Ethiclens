@@ -54,6 +54,45 @@ The bundled datasets (Folktables/ACS, COMPAS, German Credit) illustrate the engi
 findings on them say nothing about *your* model on *your* population. Re-run on representative,
 governed data before drawing conclusions.
 
+## 9. The hosted agent is a demonstration deployment, not production infrastructure
+The live agent (Cloud Run + Supabase + Vercel, see [`DEPLOYMENT.md`](DEPLOYMENT.md)) runs on free
+tiers with **no uptime guarantee**. Cloud Run scales to zero between requests, so the first
+request after idle time pays a cold-start cost (a few seconds). Treat it as a portfolio artifact
+to click through, not a system to depend on.
+
+## 10. The agent's narrative and Q&A can silently downgrade to numeric-only
+The LLM layer (schema inference, narrative, chat) degrades to a plain numeric summary — never a
+fabricated explanation — under any of: no `GROQ_API_KEY`/`GEMINI_API_KEY` configured, the daily
+LLM call budget exhausted (`agent_daily_llm_call_cap` in
+[`config.py`](services/api/src/ethiclens_api/config.py)), or two consecutive generations failing
+the number-grounding validator ([`agent/grounding.py`](services/api/src/ethiclens_api/agent/grounding.py)).
+Every response carries `grounded`/`degraded` flags so this is never silent to the API caller — the
+UI surfaces them as badges — but it means two audits of the same data can produce different
+*prose* (never different *numbers*) depending on quota state.
+
+## 11. Measured mitigation is one strategy, not a menu
+The agent's before/after mitigation chart is *measured* (fit on a train split, evaluated on
+held-out data) only for **group-specific decision thresholds** (Fairlearn's `ThresholdOptimizer`),
+and only when the uploaded CSV has both a continuous score column and true labels. Reweighing and
+constrained-retraining strategies — available in the core `fairness_core.mitigation` engine and
+the enterprise `/sessions` workbench — need a trainable model object, which a predictions-only CSV
+structurally never provides. This is a design constraint of the hosted agent, not an oversight; see
+[`agent/executor.py`](services/api/src/ethiclens_api/agent/executor.py).
+
+## 12. The agent never persists what you upload
+Predictions CSVs are parsed in memory and discarded; only the derived scorecard JSON and narrative
+are stored ([`AgentAuditRecord`](services/api/src/ethiclens_api/models.py)). Uploads are capped at
+5MB / 50,000 rows. The three demo datasets are the only data that ships with the deployment.
+
+## 13. The hosted agent intentionally exposes a smaller surface than the full repo
+Model-file ingestion, MLflow tracking, and the arq/Redis worker queue all exist in this repository
+and are exercised by the enterprise `/sessions` flow and its test suite, but are **not** present in
+the agent's hosted deployment: it accepts predictions CSVs only (never model files — see
+[`agent/csv_ingest.py`](services/api/src/ethiclens_api/agent/csv_ingest.py)), stores audit records
+in Postgres instead of MLflow, and runs every job in-process (`EAGER_TASKS=true`) instead of
+queuing to a worker. Each is a deliberate scope decision for a public, free-tier deployment, not a
+missing feature — see [`DEPLOYMENT.md`](DEPLOYMENT.md#whats-intentionally-not-enabled-here).
+
 ---
 
 *If you find a place where the code claims more than this document allows, that is a bug — please
