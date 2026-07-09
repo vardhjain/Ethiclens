@@ -18,6 +18,10 @@ permissions:
 jobs:
   ping:
     runs-on: ubuntu-latest
+    env:
+      # `secrets.*` can't be referenced directly in `if:` conditions, so route
+      # it through an env var first.
+      SUPABASE_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
     steps:
       - name: Ping API /health
         if: ${{ vars.API_URL != '' }}
@@ -25,8 +29,8 @@ jobs:
           curl -fsS --max-time 30 "${{ vars.API_URL }}/health"
 
       - name: Ping Supabase (SELECT 1)
-        if: ${{ secrets.SUPABASE_DATABASE_URL != '' }}
+        if: ${{ env.SUPABASE_DATABASE_URL != '' }}
         env:
           PGCONNECT_TIMEOUT: "10"
         run: |
-          psql "${{ secrets.SUPABASE_DATABASE_URL }}" -c "SELECT 1;"
+          psql "$SUPABASE_DATABASE_URL" -c "SELECT 1;"
