@@ -1,6 +1,8 @@
 // Typed API client for the EthicLens service. Requests go through Vite's /api
 // proxy in dev and the nginx reverse-proxy in production.
 
+import { notifications } from "@mantine/notifications";
+
 const TOKEN_KEY = "ethiclens_token";
 
 export function getToken(): string | null {
@@ -21,6 +23,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
   const res = await fetch(`/api${path}`, { ...init, headers });
+  if (res.status === 401 && token) {
+    // The token we sent was rejected (expired or otherwise invalid) — clear it and
+    // bounce to login instead of leaving every query/mutation on this page stuck on
+    // a "Could not validate credentials" error that Retry can never resolve.
+    clearToken();
+    if (!window.location.pathname.startsWith("/login")) {
+      notifications.show({ color: "yellow", message: "Your session expired — please sign in again." });
+      window.location.assign("/login");
+    }
+  }
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
     throw new Error(detail.detail ?? `Request failed (${res.status})`);
