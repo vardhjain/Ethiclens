@@ -41,8 +41,22 @@ class _StubClient:
         return json.dumps(_PROPOSAL)
 
 
+class _AlwaysInvalidClient:
+    """Simulates every configured provider failing: never returns valid schema JSON,
+    so ``complete_json`` exhausts its retries and raises ``LLMCallError``."""
+
+    def complete(self, system: str, prompt: str) -> str:
+        return "not valid json"
+
+
 def _patch_llm(monkeypatch) -> None:
     monkeypatch.setattr(agent_router, "build_default_client_or_none", lambda *_: _StubClient())
+
+
+def _patch_llm_always_failing(monkeypatch) -> None:
+    monkeypatch.setattr(
+        agent_router, "build_default_client_or_none", lambda *_: _AlwaysInvalidClient()
+    )
 
 
 async def test_propose_schema_returns_proposal(client: AsyncClient, auth, monkeypatch) -> None:
@@ -63,6 +77,19 @@ async def test_propose_schema_without_llm_key_returns_503(
     client: AsyncClient, auth, monkeypatch
 ) -> None:
     monkeypatch.setattr(agent_router, "build_default_client_or_none", lambda *_: None)
+    headers = await auth(client)
+    resp = await client.post(
+        "/api/agent/propose-schema",
+        headers=headers,
+        files={"file": ("data.csv", _CSV, "text/csv")},
+    )
+    assert resp.status_code == 503
+
+
+async def test_propose_schema_returns_503_when_all_llm_providers_fail(
+    client: AsyncClient, auth, monkeypatch
+) -> None:
+    _patch_llm_always_failing(monkeypatch)
     headers = await auth(client)
     resp = await client.post(
         "/api/agent/propose-schema",
@@ -123,6 +150,30 @@ async def test_run_audit_degrades_without_llm_key(client: AsyncClient, auth, mon
     body = resp.json()
     assert body["degraded"] is True
     assert body["grounded"] is False
+
+
+async def test_run_audit_degrades_when_all_llm_providers_fail(
+    client: AsyncClient, auth, monkeypatch
+) -> None:
+    """The deterministic stages (2-4) already succeeded before narrative generation is
+    attempted; an LLM outage must degrade to the numeric-only narrative, not 500 and
+    discard a completed audit."""
+    _patch_llm_always_failing(monkeypatch)
+    headers = await auth(client)
+    resp = await client.post(
+        "/api/agent/run-audit",
+        headers=headers,
+        files={"file": ("data.csv", _CSV, "text/csv")},
+        data={"proposal_json": json.dumps(_PROPOSAL)},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["degraded"] is True
+    assert body["grounded"] is False
+    assert body["scorecard"]["groups"]
+
+    fetched = await client.get(f"/api/agent/records/{body['record_id']}", headers=headers)
+    assert fetched.status_code == 200
 
 
 async def test_ask_about_record_returns_grounded_answer(
@@ -267,6 +318,28 @@ async def test_ask_without_llm_key_returns_503(client: AsyncClient, auth, monkey
     record_id = run.json()["record_id"]
 
     monkeypatch.setattr(agent_router, "build_default_client_or_none", lambda *_: None)
+    resp = await client.post(
+        f"/api/agent/records/{record_id}/ask",
+        headers=headers,
+        json={"question": "Anything?"},
+    )
+    assert resp.status_code == 503
+
+
+async def test_ask_returns_503_when_all_llm_providers_fail(
+    client: AsyncClient, auth, monkeypatch
+) -> None:
+    _patch_llm(monkeypatch)
+    headers = await auth(client)
+    run = await client.post(
+        "/api/agent/run-audit",
+        headers=headers,
+        files={"file": ("data.csv", _CSV, "text/csv")},
+        data={"proposal_json": json.dumps(_PROPOSAL)},
+    )
+    record_id = run.json()["record_id"]
+
+    _patch_llm_always_failing(monkeypatch)
     resp = await client.post(
         f"/api/agent/records/{record_id}/ask",
         headers=headers,

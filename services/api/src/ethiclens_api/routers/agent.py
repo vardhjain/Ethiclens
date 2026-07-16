@@ -32,7 +32,7 @@ from ethiclens_api.agent.audit_planner import plan_audit
 from ethiclens_api.agent.csv_ingest import read_predictions_csv
 from ethiclens_api.agent.demo_datasets import get_demo_dataset, list_demo_datasets
 from ethiclens_api.agent.executor import execute_plan, measure_top_mitigation
-from ethiclens_api.agent.llm_client import build_default_client_or_none
+from ethiclens_api.agent.llm_client import LLMCallError, build_default_client_or_none
 from ethiclens_api.agent.narrative import build_scorecard, generate_narrative, unavailable_result
 from ethiclens_api.agent.qa import ask
 from ethiclens_api.agent.quota import has_budget, record_llm_call
@@ -79,7 +79,13 @@ async def _run_and_persist(
 
     client = build_default_client_or_none(settings.groq_api_key, settings.gemini_api_key)
     if client is not None and await has_budget(db, settings.agent_daily_llm_call_cap):
-        narrative_result = generate_narrative(client, scorecard)
+        try:
+            narrative_result = generate_narrative(client, scorecard)
+        except LLMCallError:
+            # All configured providers failed (outage, bad key, rate limit). The
+            # deterministic stages above already succeeded — degrade to a numeric-only
+            # narrative rather than discard a completed audit with a bare 500.
+            narrative_result = unavailable_result(scorecard)
         await record_llm_call(db)
     else:
         narrative_result = unavailable_result(scorecard)
@@ -134,7 +140,14 @@ async def propose_schema(
     data = await read_predictions_csv(
         file, max_mb=settings.agent_max_upload_mb, max_rows=settings.agent_max_rows
     )
-    proposal = infer_schema(client, data)
+    try:
+        proposal = infer_schema(client, data)
+    except LLMCallError as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Schema inference is temporarily unavailable (all LLM providers failed). "
+            "Try again shortly.",
+        ) from exc
     await record_llm_call(db)
     return proposal
 
@@ -251,6 +264,12 @@ async def ask_about_record(
             status.HTTP_429_TOO_MANY_REQUESTS,
             "Daily LLM call budget exhausted; try again tomorrow.",
         )
-    result = ask(client, record.scorecard, body.question)
+    try:
+        result = ask(client, record.scorecard, body.question)
+    except LLMCallError as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Q&A is temporarily unavailable (all LLM providers failed). Try again shortly.",
+        ) from exc
     await record_llm_call(db)
     return {"answer": result.answer, "grounded": result.grounded, "degraded": result.degraded}
