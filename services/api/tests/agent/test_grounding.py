@@ -45,3 +45,9 @@ def test_is_grounded_true_for_small_rounding_drift():
     # still grounded, just not restating a different threshold verdict.
     assert is_grounded("The score is 0.57.", {"0.57"})
     assert is_grounded("The score is 0.566.", {"0.57"})
+
+
+def test_is_grounded_false_logs_the_offending_token(caplog):
+    with caplog.at_level("WARNING", logger="ethiclens.agent.grounding"):
+        assert not is_grounded("42% of applicants were affected.", {"0.55"})
+    assert any("42%" in record.message for record in caplog.records)

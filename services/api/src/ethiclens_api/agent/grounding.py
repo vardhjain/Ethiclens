@@ -7,7 +7,10 @@ is the guardrail that keeps the LLM from ever fabricating a metric.
 
 from __future__ import annotations
 
+import logging
 import re
+
+_log = logging.getLogger("ethiclens.agent.grounding")
 
 #: Matches numbers, including percentages, negatives, and decimals (e.g. "55%", "-0.12", "1,234").
 _NUMBER_RE = re.compile(r"-?\d[\d,]*\.?\d*%?")
@@ -22,6 +25,11 @@ def is_grounded(text: str, source_numbers: set[str]) -> bool:
     """True if every numeric token in ``text`` is traceable to ``source_numbers``."""
     for token in _NUMBER_RE.findall(text):
         if not _close_to_any(_normalize(token), source_numbers):
+            _log.warning(
+                "Grounding failed: token %r not traceable to any of %d source numbers",
+                token,
+                len(source_numbers),
+            )
             return False
     return True
 

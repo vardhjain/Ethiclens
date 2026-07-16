@@ -13,11 +13,21 @@ Design constraints from the build plan:
 from __future__ import annotations
 
 import json
+import logging
+import time
 from typing import Protocol, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+_log = logging.getLogger("ethiclens.agent.llm_client")
+
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
+
+#: Neither SDK is given a timeout by default, so a hung provider (a stalled connection,
+#: not a clean error) would otherwise block whichever thread runs .complete() forever —
+#: including, pre-asyncio.to_thread, the event loop itself. 30s is generous for an
+#: interactive request but still a hard ceiling.
+_DEFAULT_TIMEOUT_SECONDS = 30.0
 
 
 class LLMCallError(RuntimeError):
@@ -42,16 +52,27 @@ def complete_json(client: LLMClient, system: str, prompt: str, schema: type[Sche
         f"(no prose, no markdown fences):\n{json.dumps(schema.model_json_schema())}"
     )
     last_error: Exception | None = None
-    for _attempt in range(2):
+    for attempt in range(2):
         try:
             raw = client.complete(system, schema_prompt)
-            return schema.model_validate_json(_extract_json(raw))
+            result = schema.model_validate_json(_extract_json(raw))
         except (ValidationError, json.JSONDecodeError, ValueError) as exc:
             last_error = exc
+            _log.warning(
+                "%s: attempt %d/2 did not parse as valid schema JSON: %s",
+                schema.__name__,
+                attempt + 1,
+                exc,
+            )
             schema_prompt = (
                 f"{schema_prompt}\n\nYour previous response was invalid JSON or did not match "
                 f"the schema ({exc}). Return ONLY the corrected JSON object."
             )
+        else:
+            if attempt > 0:
+                _log.info("%s: parsed successfully on retry", schema.__name__)
+            return result
+    _log.error("%s: did not return valid JSON after 2 attempts", schema.__name__)
     raise LLMCallError(f"LLM did not return valid {schema.__name__} JSON after 2 attempts") from (
         last_error
     )
@@ -70,10 +91,15 @@ def _extract_json(raw: str) -> str:
 class GroqClient:
     """Wraps the Groq SDK. Imported lazily so ``groq`` is only required if actually used."""
 
-    def __init__(self, api_key: str, model: str = "llama-3.3-70b-versatile") -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "llama-3.3-70b-versatile",
+        timeout: float = _DEFAULT_TIMEOUT_SECONDS,
+    ) -> None:
         from groq import Groq
 
-        self._client = Groq(api_key=api_key)
+        self._client = Groq(api_key=api_key, timeout=timeout)
         self._model = model
 
     def complete(self, system: str, prompt: str) -> str:
@@ -91,10 +117,18 @@ class GroqClient:
 class GeminiClient:
     """Wraps the Gemini SDK. Imported lazily so ``google-genai`` is only required if used."""
 
-    def __init__(self, api_key: str, model: str = "gemini-2.0-flash") -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gemini-2.0-flash",
+        timeout: float = _DEFAULT_TIMEOUT_SECONDS,
+    ) -> None:
         from google import genai
+        from google.genai import types
 
-        self._client = genai.Client(api_key=api_key)
+        # http_options.timeout is milliseconds; the SDK has no top-level timeout= kwarg.
+        http_options = types.HttpOptions(timeout=int(timeout * 1000))
+        self._client = genai.Client(api_key=api_key, http_options=http_options)
         self._model = model
 
     def complete(self, system: str, prompt: str) -> str:
@@ -115,13 +149,32 @@ class FallbackLLMClient:
         self._clients = clients
 
     def complete(self, system: str, prompt: str) -> str:
+        errors: list[str] = []
         last_error: Exception | None = None
         for client in self._clients:
+            provider = type(client).__name__
+            start = time.monotonic()
             try:
-                return client.complete(system, prompt)
+                result = client.complete(system, prompt)
             except Exception as exc:
+                elapsed = time.monotonic() - start
+                _log.warning(
+                    "%s failed after %.2fs: %s: %s", provider, elapsed, type(exc).__name__, exc
+                )
+                # Keep every provider's failure, not just the last: if Groq 429s and
+                # Gemini also fails, discarding Groq's error makes a dead primary key
+                # invisible — the raised message would only ever mention the fallback.
+                errors.append(f"{provider}: {type(exc).__name__}: {exc}")
                 last_error = exc
-        raise LLMCallError("All configured LLM providers failed") from last_error
+                continue
+            _log.info("%s succeeded in %.2fs", provider, time.monotonic() - start)
+            return result
+        _log.error(
+            "All %d configured LLM provider(s) failed: %s", len(self._clients), "; ".join(errors)
+        )
+        raise LLMCallError(
+            f"All {len(self._clients)} configured LLM provider(s) failed: " + "; ".join(errors)
+        ) from last_error
 
 
 def build_default_client(groq_api_key: str | None, gemini_api_key: str | None) -> LLMClient:

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import time
 
 from httpx import AsyncClient
 
@@ -57,6 +59,23 @@ def _patch_llm_always_failing(monkeypatch) -> None:
     monkeypatch.setattr(
         agent_router, "build_default_client_or_none", lambda *_: _AlwaysInvalidClient()
     )
+
+
+class _SlowClient:
+    """Simulates a slow real network call — the SDK clients this stands in for
+    (Groq/Gemini) block synchronously on I/O, just like ``time.sleep`` does here."""
+
+    def __init__(self, delay_seconds: float) -> None:
+        self._delay_seconds = delay_seconds
+
+    def complete(self, system: str, prompt: str) -> str:
+        time.sleep(self._delay_seconds)
+        return json.dumps(
+            {
+                "narrative": "The audit found a disparity between groups.",
+                "mitigation_summary": "Consider applying a mitigation strategy.",
+            }
+        )
 
 
 async def test_propose_schema_returns_proposal(client: AsyncClient, auth, monkeypatch) -> None:
@@ -122,6 +141,53 @@ async def test_run_audit_persists_and_returns_report(
     fetched = await client.get(f"/api/agent/records/{record_id}", headers=headers)
     assert fetched.status_code == 200
     assert fetched.json()["narrative"] == body["narrative"]
+
+
+async def test_run_audit_does_not_block_the_event_loop(
+    client: AsyncClient, auth, monkeypatch
+) -> None:
+    """A slow LLM call must not stall other concurrent requests on the same process —
+    regression test for the asyncio.to_thread offload in agent.py.
+
+    Timing this reliably takes care: everything before the blocking LLM call (auth,
+    multipart parsing, the has_budget DB check) is itself made of await points, so a
+    lightweight concurrent request fired with no delay at all can race ahead and finish
+    during that legitimate preamble — appearing "unblocked" regardless of whether the
+    fix is applied. STARTUP_MARGIN below is chosen well above that preamble's observed
+    cost so the lightweight request is reliably dispatched only once the slow request
+    has already reached (and, if unfixed, is stuck in) the blocking call — then elapsed
+    time is measured from one fixed, absolute start so an internally-delayed asyncio.sleep
+    can't make a blocked wait look artificially fast relative to its own delayed start.
+    """
+    block_seconds = 2.0
+    startup_margin = 0.5
+    monkeypatch.setattr(
+        agent_router, "build_default_client_or_none", lambda *_: _SlowClient(block_seconds)
+    )
+    headers = await auth(client)
+    t_start = time.monotonic()
+
+    async def slow_request() -> float:
+        resp = await client.post(
+            "/api/agent/run-audit",
+            headers=headers,
+            files={"file": ("data.csv", _CSV, "text/csv")},
+            data={"proposal_json": json.dumps(_PROPOSAL)},
+        )
+        assert resp.status_code == 201
+        return time.monotonic() - t_start
+
+    async def lightweight_request() -> float:
+        await asyncio.sleep(startup_margin)
+        resp = await client.get("/api/agent/demo-datasets")
+        assert resp.status_code == 200
+        return time.monotonic() - t_start
+
+    slow_elapsed, lightweight_elapsed = await asyncio.gather(slow_request(), lightweight_request())
+    assert slow_elapsed >= block_seconds
+    # If the slow request's blocking call had monopolized the event loop, this would
+    # also be dragged out to ~block_seconds — nothing else could run until it cleared.
+    assert lightweight_elapsed < block_seconds - startup_margin
 
 
 async def test_run_audit_rejects_unknown_columns(client: AsyncClient, auth, monkeypatch) -> None:

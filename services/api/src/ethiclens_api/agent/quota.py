@@ -7,6 +7,7 @@ rather than let costs run past a free-tier quota.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -15,6 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ethiclens_api.db import engine
 from ethiclens_api.models import UsageCounter
+
+_log = logging.getLogger("ethiclens.agent.quota")
 
 
 def _today() -> str:
@@ -49,4 +52,7 @@ async def record_llm_call(db: AsyncSession) -> None:
 
 
 async def has_budget(db: AsyncSession, daily_cap: int) -> bool:
-    return await llm_calls_remaining(db, daily_cap) > 0
+    remaining = await llm_calls_remaining(db, daily_cap)
+    if remaining <= 0:
+        _log.warning("Daily LLM call budget exhausted (cap=%d)", daily_cap)
+    return remaining > 0

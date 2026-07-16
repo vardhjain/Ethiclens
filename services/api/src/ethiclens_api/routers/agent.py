@@ -19,6 +19,8 @@ unconfirmed guess" and "no data persistence" guardrails:
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from functools import lru_cache
 from pathlib import Path
 from uuid import UUID
@@ -42,6 +44,8 @@ from ethiclens_api.config import get_settings
 from ethiclens_api.db import get_session
 from ethiclens_api.models import AgentAuditRecord, UserAccount
 from ethiclens_api.security import get_current_user
+
+_log = logging.getLogger("ethiclens.agent")
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 
@@ -111,23 +115,35 @@ async def _run_and_persist(
 
     settings = get_settings()
     plan = plan_audit(proposal, data)
-    result = execute_plan(plan, data, proposal.outcome_direction)
+    # execute_plan (a bootstrap over up to agent_max_rows rows) and generate_narrative
+    # (a blocking Groq/Gemini SDK call) both run in a worker thread, not inline on the
+    # event loop — otherwise one large audit or one slow LLM call blocks every other
+    # request this process is serving, /health included. Same pattern already used by
+    # audit_service.execute_audit for the enterprise /sessions flow.
+    result = await asyncio.to_thread(execute_plan, plan, data, proposal.outcome_direction)
     # Real, held-out-measured before/after — only possible while the CSV is still in
     # memory (never persisted); unavailable without a score column + true labels.
-    measured_mitigation = measure_top_mitigation(plan, data, proposal.outcome_direction, result)
+    measured_mitigation = await asyncio.to_thread(
+        measure_top_mitigation, plan, data, proposal.outcome_direction, result
+    )
     scorecard, _recommendations = build_scorecard(result, plan, measured_mitigation)
 
     client = build_default_client_or_none(settings.groq_api_key, settings.gemini_api_key)
     if client is not None and await has_budget(db, settings.agent_daily_llm_call_cap):
         try:
-            narrative_result = generate_narrative(client, scorecard)
-        except LLMCallError:
+            narrative_result = await asyncio.to_thread(generate_narrative, client, scorecard)
+        except LLMCallError as exc:
             # All configured providers failed (outage, bad key, rate limit). The
             # deterministic stages above already succeeded — degrade to a numeric-only
             # narrative rather than discard a completed audit with a bare 500.
+            _log.warning("Narrative generation failed, degrading to numeric-only: %s", exc)
             narrative_result = unavailable_result(scorecard)
         await record_llm_call(db)
     else:
+        if client is None:
+            _log.info("No LLM provider configured; narrative will be numeric-only")
+        else:
+            _log.info("Daily LLM call budget exhausted; narrative will be numeric-only")
         narrative_result = unavailable_result(scorecard)
 
     record = AgentAuditRecord(
@@ -181,7 +197,7 @@ async def propose_schema(
         file, max_mb=settings.agent_max_upload_mb, max_rows=settings.agent_max_rows
     )
     try:
-        proposal = infer_schema(client, data)
+        proposal = await asyncio.to_thread(infer_schema, client, data)
     except LLMCallError as exc:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -305,7 +321,7 @@ async def ask_about_record(
             "Daily LLM call budget exhausted; try again tomorrow.",
         )
     try:
-        result = ask(client, record.scorecard, body.question)
+        result = await asyncio.to_thread(ask, client, record.scorecard, body.question)
     except LLMCallError as exc:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,

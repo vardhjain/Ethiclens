@@ -29,6 +29,14 @@ async def test_has_budget_false_once_cap_reached(db_session: AsyncSession):
     assert await llm_calls_remaining(db_session, daily_cap=3) == 0
 
 
+async def test_has_budget_false_logs_a_warning(db_session: AsyncSession, caplog):
+    for _ in range(3):
+        await record_llm_call(db_session)
+    with caplog.at_level("WARNING", logger="ethiclens.agent.quota"):
+        assert await has_budget(db_session, daily_cap=3) is False
+    assert any("exhausted" in record.message for record in caplog.records)
+
+
 async def test_record_llm_call_is_atomic_under_concurrency(db_session: AsyncSession):
     """A read-modify-write increment loses updates when requests race; each bump here
     uses its own session (the same shape as one-session-per-request in production), so
