@@ -27,6 +27,7 @@ import {
 } from "recharts";
 import { useParams } from "react-router-dom";
 import { api, type AgentRecommendation, type MeasuredMitigation, type ScorecardMetric } from "../api/client";
+import { QueryError } from "../components/QueryError";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -204,7 +205,17 @@ export function AgentRecordPage() {
     ask.mutate(q);
   }
 
-  if (record.isLoading || !record.data) return <Loader />;
+  if (record.isLoading) return <Loader />;
+  if (record.isError) {
+    return (
+      <QueryError
+        error={record.error}
+        onRetry={() => record.refetch()}
+        title="Couldn't load this audit report"
+      />
+    );
+  }
+  if (!record.data) return <Loader />;
   const r = record.data;
   const sc = r.scorecard;
   const groupEntries = Object.entries(sc.recommendations);

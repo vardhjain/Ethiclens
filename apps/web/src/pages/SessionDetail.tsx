@@ -26,6 +26,7 @@ import {
 } from "recharts";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, getToken, type MetricOut } from "../api/client";
+import { QueryError } from "../components/QueryError";
 
 function diChartData(metrics: MetricOut[]) {
   return metrics
@@ -90,7 +91,17 @@ export function SessionDetailPage() {
     onError: (e) => notifications.show({ color: "red", message: (e as Error).message }),
   });
 
-  if (session.isLoading || !session.data) return <Loader />;
+  if (session.isLoading) return <Loader />;
+  if (session.isError) {
+    return (
+      <QueryError
+        error={session.error}
+        onRetry={() => session.refetch()}
+        title="Couldn't load this audit session"
+      />
+    );
+  }
+  if (!session.data) return <Loader />;
   const s = session.data;
   const flaggedRecs = recs.data?.recommendations ?? {};
   const firstGroup = Object.keys(flaggedRecs)[0];

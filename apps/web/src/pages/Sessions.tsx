@@ -2,6 +2,7 @@ import { Badge, Card, Group, Loader, Stack, Table, Text, Title } from "@mantine/
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, type SessionOut } from "../api/client";
+import { QueryError } from "../components/QueryError";
 
 const STATUS_COLOR: Record<string, string> = {
   FLAGGED: "red",
@@ -12,13 +13,18 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export function SessionsPage() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["sessions"],
     queryFn: api.listSessions,
     refetchInterval: 4000,
   });
 
   if (isLoading) return <Loader />;
+  if (isError) {
+    return (
+      <QueryError error={error} onRetry={() => refetch()} title="Couldn't load audit sessions" />
+    );
+  }
   const sessions = data ?? [];
 
   return (
