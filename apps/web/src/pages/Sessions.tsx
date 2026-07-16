@@ -9,14 +9,18 @@ const STATUS_COLOR: Record<string, string> = {
   COMPLETED: "green",
   SIGNED_OFF: "blue",
   RUNNING: "yellow",
+  QUEUED: "yellow",
   FAILED: "gray",
 };
+
+const POLLING_STATUSES = new Set(["RUNNING", "QUEUED"]);
 
 export function SessionsPage() {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["sessions"],
     queryFn: api.listSessions,
-    refetchInterval: 4000,
+    refetchInterval: (query) =>
+      query.state.data?.some((s) => POLLING_STATUSES.has(s.status)) ? 4000 : false,
   });
 
   if (isLoading) return <Loader />;
