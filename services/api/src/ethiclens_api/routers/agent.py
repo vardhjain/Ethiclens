@@ -46,9 +46,7 @@ from ethiclens_api.security import get_current_user
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 
 
-async def _owned_record(
-    record_id: UUID, user: UserAccount, db: AsyncSession
-) -> AgentAuditRecord:
+async def _owned_record(record_id: UUID, user: UserAccount, db: AsyncSession) -> AgentAuditRecord:
     record = await db.get(AgentAuditRecord, record_id)
     if record is None or record.owner_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Audit record not found")

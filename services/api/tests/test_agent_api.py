@@ -206,9 +206,7 @@ def _labeled_csv() -> str:
     feature = rng.uniform(0, 1, n * 2)
     race = ["A"] * n + ["B"] * n
     rows = ["race,flag,risk_score,actual,feature"]
-    rows += [
-        f"{race[i]},{flag[i]},{score[i]},{label[i]},{feature[i]}" for i in range(2 * n)
-    ]
+    rows += [f"{race[i]},{flag[i]},{score[i]},{label[i]},{feature[i]}" for i in range(2 * n)]
     return "\n".join(rows)
 
 

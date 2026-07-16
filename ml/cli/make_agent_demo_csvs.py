@@ -65,9 +65,7 @@ def make_compas() -> None:
     df = ds.frame.copy()
     df["risk_score"] = (df["decile_score"] / 10.0).round(3)
     df["decision"] = (df["decile_score"] >= 5).astype(int)
-    out = df[
-        ["race", "sex", "priors_count", "risk_score", "decision", "two_year_recid"]
-    ].dropna()
+    out = df[["race", "sex", "priors_count", "risk_score", "decision", "two_year_recid"]].dropna()
     out = out.sample(n=min(_SAMPLE_ROWS, len(out)), random_state=_SEED).reset_index(drop=True)
     _write(out, "compas")
 

@@ -37,6 +37,7 @@ _SYSTEM_PROMPT = (
     "'flagged' fields already indicate — you may restate a flag, never derive a new one."
 )
 
+
 class NarrativeOutput(BaseModel):
     narrative: str = Field(description="Plain-English explanation of the audit findings")
     mitigation_summary: str = Field(
@@ -76,9 +77,7 @@ def build_scorecard(
                 "n_privileged": g.n_privileged,
                 "n_unprivileged": g.n_unprivileged,
                 "flagged": g.flagged,
-                "metrics": {
-                    name: dataclasses.asdict(metric) for name, metric in g.metrics.items()
-                },
+                "metrics": {name: dataclasses.asdict(metric) for name, metric in g.metrics.items()},
             }
             for g in result.groups
         ],
