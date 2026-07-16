@@ -26,13 +26,36 @@ import {
   YAxis,
 } from "recharts";
 import { useParams } from "react-router-dom";
-import { api, type AgentRecommendation, type MeasuredMitigation } from "../api/client";
+import { api, type AgentRecommendation, type MeasuredMitigation, type ScorecardMetric } from "../api/client";
 
 interface ChatMessage {
   role: "user" | "assistant";
   text: string;
   grounded?: boolean;
   degraded?: boolean;
+}
+
+const BAD_CLASSIFICATIONS = new Set(["FAIL", "Flagged"]);
+
+function MetricCell({ metric }: { metric: ScorecardMetric | undefined }) {
+  if (!metric || metric.value == null) {
+    return (
+      <Text size="sm" c="dimmed">
+        {metric?.classification === "INSUFFICIENT_DATA" ? "Insufficient data" : "N/A"}
+      </Text>
+    );
+  }
+  const bad = metric.classification != null && BAD_CLASSIFICATIONS.has(metric.classification);
+  return (
+    <Group gap={6} wrap="nowrap">
+      <Text size="sm">{metric.value.toFixed(3)}</Text>
+      {metric.classification && (
+        <Badge size="xs" color={bad ? "red" : "gray"} variant="light">
+          {metric.classification}
+        </Badge>
+      )}
+    </Group>
+  );
 }
 
 function MeasuredMitigationChart({ measured }: { measured: MeasuredMitigation }) {
@@ -235,25 +258,32 @@ export function AgentRecordPage() {
               <Table.Th>Group</Table.Th>
               <Table.Th>n (priv/unpriv)</Table.Th>
               <Table.Th>Disparate Impact</Table.Th>
+              <Table.Th>Statistical Parity Diff.</Table.Th>
+              <Table.Th>Equalized Odds</Table.Th>
               <Table.Th>Flagged</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {sc.groups.map((g, i) => {
-              const di = g.metrics["disparate_impact"];
-              return (
-                <Table.Tr key={i}>
-                  <Table.Td>{g.group_label}</Table.Td>
-                  <Table.Td>
-                    {g.n_privileged} / {g.n_unprivileged}
-                  </Table.Td>
-                  <Table.Td>{di?.value != null ? di.value.toFixed(3) : "N/A"}</Table.Td>
-                  <Table.Td>
-                    {g.flagged ? <Badge color="red">Flagged</Badge> : <Badge color="green">OK</Badge>}
-                  </Table.Td>
-                </Table.Tr>
-              );
-            })}
+            {sc.groups.map((g, i) => (
+              <Table.Tr key={i}>
+                <Table.Td>{g.group_label}</Table.Td>
+                <Table.Td>
+                  {g.n_privileged} / {g.n_unprivileged}
+                </Table.Td>
+                <Table.Td>
+                  <MetricCell metric={g.metrics["disparate_impact"]} />
+                </Table.Td>
+                <Table.Td>
+                  <MetricCell metric={g.metrics["spd"]} />
+                </Table.Td>
+                <Table.Td>
+                  <MetricCell metric={g.metrics["equalized_odds"]} />
+                </Table.Td>
+                <Table.Td>
+                  {g.flagged ? <Badge color="red">Flagged</Badge> : <Badge color="green">OK</Badge>}
+                </Table.Td>
+              </Table.Tr>
+            ))}
           </Table.Tbody>
         </Table>
       </Card>
