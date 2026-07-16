@@ -24,3 +24,24 @@ def test_is_grounded_false_for_fabricated_number():
 
 def test_is_grounded_true_when_text_has_no_numbers():
     assert is_grounded("No numeric claims here.", {"0.55"})
+
+
+def test_is_grounded_false_when_claim_crosses_the_four_fifths_threshold():
+    """0.79 and 0.80 are both already-rounded values on opposite sides of the
+    four-fifths rule — that's a materially different regulatory statement, not a
+    rounding difference, and must not be treated as grounded."""
+    assert not is_grounded("The disparate impact is 0.79.", {"0.80"})
+
+
+def test_is_grounded_true_for_reverse_percentage_vs_fraction():
+    """The percentage<->fraction check must work in both directions: a claim on the
+    0-1 scale against a source expressed on the 0-100 scale, not just the reverse."""
+    assert is_grounded("The rate is 0.55.", {"55.00"})
+
+
+def test_is_grounded_true_for_small_rounding_drift():
+    # Source value 0.5663793103448276 normalizes to "0.57" (see extract_source_numbers);
+    # an LLM restating it as "0.57" or with one more digit of precision ("0.566") is
+    # still grounded, just not restating a different threshold verdict.
+    assert is_grounded("The score is 0.57.", {"0.57"})
+    assert is_grounded("The score is 0.566.", {"0.57"})

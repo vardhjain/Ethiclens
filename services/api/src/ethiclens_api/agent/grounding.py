@@ -35,6 +35,17 @@ def _normalize(token: str) -> str:
         return cleaned
 
 
+#: Both the claim and every source number are already independently rounded to 2
+#: decimals by _normalize() before this comparison runs, so this only needs to absorb
+#: residual rounding-boundary drift (e.g. a source of 0.5949999 normalizing to "0.59"
+#: while a slightly different intermediate computation rounds to "0.60"). It must stay
+#: well under 0.01: a full extra hundredth of slack would let a narrative claim "0.79"
+#: pass against a source value of "0.80" — a different four-fifths-threshold verdict,
+#: not a rounding difference.
+_ABS_TOLERANCE = 0.005
+_PCT_TOLERANCE = _ABS_TOLERANCE * 100
+
+
 def _close_to_any(value: str, source_numbers: set[str]) -> bool:
     try:
         target = float(value)
@@ -42,11 +53,17 @@ def _close_to_any(value: str, source_numbers: set[str]) -> bool:
         return value in source_numbers
     for candidate in source_numbers:
         try:
-            if abs(float(candidate) - target) <= 0.011:
-                return True
-            # Percentage vs fraction: "55.00" claimed against source fraction "0.55".
-            if abs(float(candidate) * 100 - target) <= 1.0:
-                return True
+            candidate_value = float(candidate)
         except ValueError:
             continue
+        if abs(candidate_value - target) <= _ABS_TOLERANCE:
+            return True
+        # Percentage vs fraction, checked both ways: a claim of "55%" against a source
+        # fraction "0.55", or (symmetrically) a claim of "0.55" against a source
+        # expressed on a 0-100 scale.
+        if (
+            abs(candidate_value * 100 - target) <= _PCT_TOLERANCE
+            or abs(candidate_value - target * 100) <= _PCT_TOLERANCE
+        ):
+            return True
     return False
