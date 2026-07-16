@@ -3,7 +3,7 @@ name: docs
 on:
   push:
     branches: [main]
-    paths: ["docs/**", "mkdocs.yml", ".github/workflows/docs.yml"]
+    paths: ["docs/**", "LIMITATIONS.md", "mkdocs.yml", ".github/workflows/docs.yml"]
   workflow_dispatch:
 
 permissions:
@@ -21,8 +21,11 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v5
       - run: uv pip install --system mkdocs-material
-      # Not --strict: docs intentionally link to source files outside docs/ (valid on GitHub).
-      - run: mkdocs build
+      # --strict: cross-repo links now use absolute GitHub URLs (see LIMITATIONS.md /
+      # docs/methodology.md) so the site has no relative links pointing outside docs/ to
+      # break; pymdownx.snippets' check_paths also fails the build if the LIMITATIONS.md
+      # include ever goes missing.
+      - run: mkdocs build --strict
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

@@ -17,6 +17,11 @@ markdown_extensions:
   - admonition
   - pymdownx.superfences
   - pymdownx.highlight
+  - pymdownx.snippets:
+      # LIMITATIONS.md lives at the repo root, one level above docs_dir; this lets
+      # docs/limitations.md include it verbatim so the two never drift apart again.
+      base_path: ["."]
+      check_paths: true
   - tables
   - toc: { permalink: true }
 

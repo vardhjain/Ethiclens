@@ -48,8 +48,8 @@ selection rate `r_a = P(Ŷ = 1 | A = a)`.
 | **Theil index** | generalised entropy of the benefit vector | yes | from scratch |
 
 Every from-scratch implementation is asserted **equal to Fairlearn within 1e-9** in
-[`test_vs_fairlearn.py`](../packages/fairness-core/tests/test_vs_fairlearn.py). That equality is the
-project's correctness proof.
+[`test_vs_fairlearn.py`](https://github.com/vardhjain/Ethiclens/blob/main/packages/fairness-core/tests/test_vs_fairlearn.py).
+That equality is the project's correctness proof.
 
 ### Disparate Impact and the 4/5ths rule
 `calculate_disparate_impact(privileged_rate, unprivileged_rate)` returns `r_0 / r_1`, raising
@@ -89,7 +89,7 @@ Composite = clamp(0.40·g_DI + 0.35·g_SPD + 0.25·g_EO, 0, 1)
 
 Bands: `< 0.60` High Risk, `< 0.80` Medium Risk, `≥ 0.80` Low Risk. Worked example (the value
 pinned in `TS-UNIT-004`): `compute_composite_bias_score(0.6, −0.25, 0.15) = 0.7150`. The composite
-is a **triage convenience, not a legal standard** — see [`../LIMITATIONS.md`](../LIMITATIONS.md).
+is a **triage convenience, not a legal standard** — see [Limitations](limitations.md).
 The weighting rationale is recorded in [`adr/0001-composite-weights.md`](adr/0001-composite-weights.md).
 
 ## Statistical rigour
