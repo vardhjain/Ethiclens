@@ -1,6 +1,5 @@
 # EthicLens developer entrypoints. `make help` lists targets.
 .DEFAULT_GOAL := help
-PY := .venv/Scripts/python.exe
 
 .PHONY: help install lint format type test cov audit-golden demo up down clean
 
@@ -9,7 +8,7 @@ help: ## Show this help
 
 install: ## Create venv and install all workspace packages + dev tools
 	uv venv
-	uv pip install -e "packages/fairness-core[validation,viz,cli]" --group dev
+	uv pip install -e "packages/fairness-core[validation,viz,cli]" -r ml/requirements.txt --group dev
 
 lint: ## Ruff lint
 	uv run ruff check .
@@ -27,7 +26,7 @@ cov: ## Tests with coverage gate (>= 85%)
 	uv run pytest --cov=fairness_core --cov-report=term-missing --cov-fail-under=85
 
 audit-golden: ## Reproduce the golden-reference audit (DI ~ 0.55)
-	$(PY) -m ml.training.train_calibrated_bias_model --verify
+	uv run python -m ml.training.train_calibrated_bias_model --verify
 
 demo: ## Print a Fairness Scorecard for a freshly trained biased model
 	uv run ethiclens-audit demo
