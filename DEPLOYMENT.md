@@ -28,6 +28,15 @@ LIMITATIONS.md. No uptime guarantee.
 4. Nothing else to create manually — `alembic upgrade head` runs automatically
    on container start (see `infra/docker/entrypoint-cloudrun.sh`) and creates
    every table from `services/api/src/ethiclens_api/models.py`.
+5. Row-Level Security: migration `0002_enable_rls` enables RLS (with no
+   policies) on every table and revokes the `anon`/`authenticated` grants, so
+   Supabase's auto-generated REST API
+   (`https://<project>.supabase.co/rest/v1/`) can't read or write anything.
+   EthicLens never uses that API — it connects directly over `DATABASE_URL`
+   as the table owner, which RLS doesn't restrict. If Supabase's security
+   advisor flagged `rls_disabled_in_public` / `sensitive_columns_exposed` on
+   an existing deployment, redeploying (which reruns `alembic upgrade head`)
+   clears both findings.
 
 Handle the password carefully: never paste it into a chat, issue tracker, or
 anywhere outside your password manager / the actual secret store (Supabase,
