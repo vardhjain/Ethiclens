@@ -34,6 +34,7 @@ interface ChatMessage {
   text: string;
   grounded?: boolean;
   degraded?: boolean;
+  failed?: boolean;
 }
 
 const BAD_CLASSIFICATIONS = new Set(["FAIL", "Flagged"]);
@@ -193,16 +194,24 @@ export function AgentRecordPage() {
     },
     onError: (e) => {
       notifications.show({ color: "red", message: (e as Error).message });
-      setMessages((m) => m.slice(0, -1));
+      // Keep the question visible and mark it failed, instead of deleting it — the
+      // textarea is already cleared by send(), so removing it too would lose the
+      // question entirely and force the user to retype it.
+      setMessages((m) => m.map((msg, i) => (i === m.length - 1 ? { ...msg, failed: true } : msg)));
     },
   });
 
-  function send() {
-    const q = question.trim();
+  function send(text: string) {
+    const q = text.trim();
     if (!q) return;
     setMessages((m) => [...m, { role: "user", text: q }]);
     setQuestion("");
     ask.mutate(q);
+  }
+
+  function retry(text: string, index: number) {
+    setMessages((m) => m.filter((_, i) => i !== index));
+    send(text);
   }
 
   if (record.isLoading) return <Loader />;
@@ -314,11 +323,21 @@ export function AgentRecordPage() {
           {messages.map((m, i) => (
             <Alert
               key={i}
-              color={m.role === "user" ? "blue" : m.degraded ? "yellow" : "gray"}
+              color={m.role === "user" ? (m.failed ? "red" : "blue") : m.degraded ? "yellow" : "gray"}
               variant="light"
               title={m.role === "user" ? "You" : "Agent"}
             >
               {m.text}
+              {m.failed && (
+                <Group gap="xs" mt={4}>
+                  <Text size="xs" c="red">
+                    Failed to send.
+                  </Text>
+                  <Button size="xs" variant="subtle" onClick={() => retry(m.text, i)}>
+                    Retry
+                  </Button>
+                </Group>
+              )}
             </Alert>
           ))}
           {ask.isPending && <Loader size="sm" />}
@@ -332,14 +351,14 @@ export function AgentRecordPage() {
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                send();
+                send(question);
               }
             }}
             autosize
             minRows={1}
             maxRows={4}
           />
-          <Button onClick={send} loading={ask.isPending} disabled={!question.trim()}>
+          <Button onClick={() => send(question)} loading={ask.isPending} disabled={!question.trim()}>
             Ask
           </Button>
         </Group>
