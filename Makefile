@@ -32,7 +32,7 @@ audit-golden: ## Reproduce the golden-reference audit (DI ~ 0.55)
 demo: ## Print a Fairness Scorecard for a freshly trained biased model
 	uv run ethiclens-audit demo
 
-up: ## Start the full stack (api, worker, web, postgres, redis, mlflow)
+up: ## Start the full stack (api, worker, web, postgres, redis)
 	docker compose up --build
 
 down: ## Stop the stack

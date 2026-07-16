@@ -1,5 +1,5 @@
 # Full EthicLens stack: `docker compose up --build`
-#   web  http://localhost:5173   ·   api  http://localhost:8000/docs   ·   mlflow :5000
+#   web  http://localhost:5173   ·   api  http://localhost:8000/docs
 services:
   postgres:
     image: postgres:16-alpine
@@ -54,12 +54,5 @@ services:
     ports: ["5173:80"]
     depends_on: [api]
 
-  mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.16.2
-    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:////mlflow/mlflow.db
-    ports: ["5000:5000"]
-    volumes: ["mlflowdata:/mlflow"]
-
 volumes:
   pgdata:
-  mlflowdata:

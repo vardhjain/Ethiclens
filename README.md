@@ -101,10 +101,10 @@ flowchart TD
 
 **What's deliberately not in the hosted deployment, and why:** the arq/Redis worker queue
 (seconds-long jobs don't justify a distributed queue — `EAGER_TASKS=true` runs everything
-in-process, see `ethiclens_api/tasks.py`), MLflow (Postgres stores audit records, not
-experiments), and model-file uploads (predictions-only by design — a public endpoint accepting
-arbitrary model files is an attack surface the enterprise `/sessions` flow's sandbox exists to
-manage, not something to also expose here). Full deployment guide: [`DEPLOYMENT.md`](DEPLOYMENT.md).
+in-process, see `ethiclens_api/tasks.py`) and model-file uploads (predictions-only by design —
+a public endpoint accepting arbitrary model files is an attack surface the enterprise `/sessions`
+flow's sandbox exists to manage, not something to also expose here). Full deployment guide:
+[`DEPLOYMENT.md`](DEPLOYMENT.md).
 See [`LIMITATIONS.md`](LIMITATIONS.md#9-the-hosted-agent-is-a-demonstration-deployment-not-production-infrastructure)
 for what this deployment does not guarantee.
 
@@ -136,7 +136,7 @@ uv venv && uv pip install -e "packages/fairness-core[validation,viz,cli]"
 uv run ethiclens-audit demo          # trains a biased model, audits it, prints a scorecard
 make audit-golden                    # reproduces the CI-pinned golden DI ≈ 0.55
 
-# 2. The full stack (API + Postgres + React + MLflow)
+# 2. The full stack (API + Postgres + React)
 cp .env.example .env
 docker compose up --build            # → web http://localhost:5173 · api http://localhost:8000/docs
 ```

@@ -92,13 +92,12 @@ provider's own retention policy — "never persisted by EthicLens" does not mean
 third party."
 
 ## 13. The hosted agent intentionally exposes a smaller surface than the full repo
-Model-file ingestion, MLflow tracking, and the arq/Redis worker queue all exist in this repository
-and are exercised by the enterprise `/sessions` flow and its test suite, but are **not** present in
-the agent's hosted deployment: it accepts predictions CSVs only (never model files — see
-[`agent/csv_ingest.py`](https://github.com/vardhjain/Ethiclens/blob/main/services/api/src/ethiclens_api/agent/csv_ingest.py)),
-stores audit records in Postgres instead of MLflow, and runs every job in-process
-(`EAGER_TASKS=true`) instead of queuing to a worker. Each is a deliberate scope decision for a
-public, free-tier deployment, not a missing feature — see
+Model-file ingestion and the arq/Redis worker queue both exist in this repository and are
+exercised by the enterprise `/sessions` flow and its test suite, but are **not** present in the
+agent's hosted deployment: it accepts predictions CSVs only (never model files — see
+[`agent/csv_ingest.py`](https://github.com/vardhjain/Ethiclens/blob/main/services/api/src/ethiclens_api/agent/csv_ingest.py))
+and runs every job in-process (`EAGER_TASKS=true`) instead of queuing to a worker. Each is a
+deliberate scope decision for a public, free-tier deployment, not a missing feature — see
 [`DEPLOYMENT.md`](https://github.com/vardhjain/Ethiclens/blob/main/DEPLOYMENT.md#whats-intentionally-not-enabled-here).
 
 ---
