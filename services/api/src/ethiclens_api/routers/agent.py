@@ -53,6 +53,29 @@ async def _owned_record(record_id: UUID, user: UserAccount, db: AsyncSession) ->
     return record
 
 
+def _non_binary_values(series: pd.Series, limit: int = 5) -> list[str]:
+    """Non-null values in ``series`` that don't coerce to 0/1 (int/float/bool/"0"/"1" all do).
+
+    Stage 3 (:func:`ethiclens_api.agent.executor.execute_plan`) unconditionally does
+    ``.astype(int)`` on the outcome and true-label columns; anything that doesn't coerce
+    cleanly either raises deep inside the engine (a bare 500) or, worse, silently coerces
+    to something meaningless. Caught here instead, against the raw upload, with a message
+    naming the offending column.
+    """
+    bad: list[str] = []
+    for value in series.dropna().unique():
+        try:
+            coerced = float(value)
+        except (TypeError, ValueError):
+            bad.append(str(value))
+        else:
+            if coerced not in (0.0, 1.0):
+                bad.append(str(value))
+        if len(bad) >= limit:
+            break
+    return bad
+
+
 async def _run_and_persist(
     proposal: SchemaInferenceProposal,
     data: pd.DataFrame,
@@ -61,13 +84,30 @@ async def _run_and_persist(
 ) -> dict:
     """Stages 2-4 shared by ``/run-audit`` and ``/demo-audit``: plan, execute, measure
     mitigation, generate narrative, persist only the derived scorecard/narrative."""
-    missing = [
-        col
-        for col in [proposal.outcome_column, *proposal.protected_attribute_columns]
-        if col not in data.columns
+    # score_column isn't checked here: plan_audit() already nulls it out below if it's
+    # missing or not genuinely continuous, so it can never reach a downstream KeyError.
+    required_columns = [
+        proposal.outcome_column,
+        *proposal.protected_attribute_columns,
+        *proposal.feature_columns,
     ]
+    if proposal.true_label_column is not None:
+        required_columns.append(proposal.true_label_column)
+    missing = [col for col in required_columns if col not in data.columns]
     if missing:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Columns not found in CSV: {missing}")
+
+    binary_columns = [proposal.outcome_column]
+    if proposal.true_label_column is not None:
+        binary_columns.append(proposal.true_label_column)
+    for col in binary_columns:
+        bad_values = _non_binary_values(data[col])
+        if bad_values:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"Column '{col}' must be binary (0/1) but contains non-binary values, "
+                f"e.g. {bad_values}",
+            )
 
     settings = get_settings()
     plan = plan_audit(proposal, data)

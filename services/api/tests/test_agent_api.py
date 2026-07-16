@@ -137,6 +137,86 @@ async def test_run_audit_rejects_unknown_columns(client: AsyncClient, auth, monk
     assert resp.status_code == 400
 
 
+async def test_run_audit_rejects_unknown_true_label_column(
+    client: AsyncClient, auth, monkeypatch
+) -> None:
+    """A confirmed proposal naming a nonexistent true_label_column must 400, not crash
+    downstream with a KeyError when the executor reads it."""
+    _patch_llm(monkeypatch)
+    headers = await auth(client)
+    bad_proposal = {**_PROPOSAL, "true_label_column": "does_not_exist"}
+    resp = await client.post(
+        "/api/agent/run-audit",
+        headers=headers,
+        files={"file": ("data.csv", _CSV, "text/csv")},
+        data={"proposal_json": json.dumps(bad_proposal)},
+    )
+    assert resp.status_code == 400
+
+
+async def test_run_audit_rejects_unknown_feature_column(
+    client: AsyncClient, auth, monkeypatch
+) -> None:
+    """A confirmed proposal naming a nonexistent feature column must 400, not crash
+    downstream with a KeyError when fairness_core selects X = data[features]."""
+    _patch_llm(monkeypatch)
+    headers = await auth(client)
+    bad_proposal = {**_PROPOSAL, "feature_columns": ["score", "does_not_exist"]}
+    resp = await client.post(
+        "/api/agent/run-audit",
+        headers=headers,
+        files={"file": ("data.csv", _CSV, "text/csv")},
+        data={"proposal_json": json.dumps(bad_proposal)},
+    )
+    assert resp.status_code == 400
+
+
+_NON_BINARY_OUTCOME_CSV = "\n".join(
+    ["race,flag,score"]
+    + [f"A,{'yes' if i < 6 else 'no'},{i}" for i in range(60)]
+    + [f"B,{'yes' if i < 30 else 'no'},{i}" for i in range(60)]
+)
+
+
+async def test_run_audit_rejects_non_binary_outcome_column(
+    client: AsyncClient, auth, monkeypatch
+) -> None:
+    """A predictions column with non-0/1 values (e.g. "yes"/"no") must 400 instead of
+    crashing deep inside _PassthroughModel.predict's unconditional .astype(int)."""
+    _patch_llm(monkeypatch)
+    headers = await auth(client)
+    resp = await client.post(
+        "/api/agent/run-audit",
+        headers=headers,
+        files={"file": ("data.csv", _NON_BINARY_OUTCOME_CSV, "text/csv")},
+        data={"proposal_json": json.dumps(_PROPOSAL)},
+    )
+    assert resp.status_code == 400
+    assert "flag" in resp.json()["detail"]
+
+
+async def test_run_audit_rejects_non_binary_true_label_column(
+    client: AsyncClient, auth, monkeypatch
+) -> None:
+    """Same guard for a confirmed true_label_column with non-0/1 values."""
+    _patch_llm(monkeypatch)
+    headers = await auth(client)
+    csv = "\n".join(
+        ["race,flag,score,actual"]
+        + [f"A,{'1' if i < 6 else '0'},{i},{'yes' if i < 6 else 'no'}" for i in range(60)]
+        + [f"B,{'1' if i < 30 else '0'},{i},{'yes' if i < 30 else 'no'}" for i in range(60)]
+    )
+    bad_proposal = {**_PROPOSAL, "true_label_column": "actual"}
+    resp = await client.post(
+        "/api/agent/run-audit",
+        headers=headers,
+        files={"file": ("data.csv", csv, "text/csv")},
+        data={"proposal_json": json.dumps(bad_proposal)},
+    )
+    assert resp.status_code == 400
+    assert "actual" in resp.json()["detail"]
+
+
 async def test_run_audit_degrades_without_llm_key(client: AsyncClient, auth, monkeypatch) -> None:
     monkeypatch.setattr(agent_router, "build_default_client_or_none", lambda *_: None)
     headers = await auth(client)
