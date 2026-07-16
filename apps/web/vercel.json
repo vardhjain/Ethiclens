@@ -3,6 +3,10 @@
     {
       "source": "/api/:path*",
       "destination": "https://ethiclens-api-198617371990.us-central1.run.app/api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
