@@ -12,6 +12,11 @@ import io
 import pandas as pd
 from fastapi import HTTPException, UploadFile, status
 
+#: Read the upload in bounded pieces rather than a single `.read()`, so a body larger
+#: than the configured cap is rejected without ever materializing more than one chunk
+#: past the limit in memory.
+_READ_CHUNK_BYTES = 1024 * 1024
+
 
 class CsvIngestError(HTTPException):
     def __init__(self, detail: str) -> None:
@@ -19,10 +24,15 @@ class CsvIngestError(HTTPException):
 
 
 async def read_predictions_csv(file: UploadFile, *, max_mb: int, max_rows: int) -> pd.DataFrame:
-    raw = await file.read()
-    size_mb = len(raw) / (1024 * 1024)
-    if size_mb > max_mb:
-        raise CsvIngestError(f"Upload is {size_mb:.1f}MB; the limit is {max_mb}MB")
+    max_bytes = max_mb * 1024 * 1024
+    chunks: list[bytes] = []
+    total_bytes = 0
+    while chunk := await file.read(_READ_CHUNK_BYTES):
+        total_bytes += len(chunk)
+        if total_bytes > max_bytes:
+            raise CsvIngestError(f"Upload exceeds the {max_mb}MB limit")
+        chunks.append(chunk)
+    raw = b"".join(chunks)
 
     try:
         df = pd.read_csv(io.BytesIO(raw))
