@@ -1,0 +1,72 @@
+name: deploy-api
+
+# Automates the "Redeploying after code changes" step from DEPLOYMENT.md #2:
+# `gcloud run deploy ethiclens-api --source .` on every push to main that
+# touches the API's source. No --set-env-vars here on purpose — Cloud Run
+# keeps whatever env vars/secrets were set on the service already (see
+# DEPLOYMENT.md #2), so this workflow only needs permission to *deploy*, never
+# DATABASE_URL/SECRET_KEY/*_API_KEY themselves.
+#
+# Requires one-time GCP setup (Workload Identity Federation, no long-lived key
+# stored in GitHub) — see the "GitHub Actions auto-deploy" section in
+# DEPLOYMENT.md. Until GCP_WORKLOAD_IDENTITY_PROVIDER / GCP_SERVICE_ACCOUNT /
+# GCP_PROJECT_ID repo variables are set, this workflow no-ops (same pattern as
+# keep-alive.yml) — safe to merge before that setup is done.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/api/**"
+      - "packages/fairness-core/**"
+      - "Dockerfile"
+      - "infra/docker/entrypoint-cloudrun.sh"
+      - "uv.lock"
+      - "pyproject.toml"
+      - ".github/workflows/deploy-api.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # required for Workload Identity Federation
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check deploy config is present
+        id: configured
+        run: |
+          if [ -z "${{ vars.GCP_PROJECT_ID }}" ] || [ -z "${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}" ] || [ -z "${{ vars.GCP_SERVICE_ACCOUNT }}" ]; then
+            echo "GCP_PROJECT_ID / GCP_WORKLOAD_IDENTITY_PROVIDER / GCP_SERVICE_ACCOUNT repo variables are not set yet — skipping deploy. See DEPLOYMENT.md."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.configured.outputs.ready == 'true'
+
+      - id: auth
+        if: steps.configured.outputs.ready == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        if: steps.configured.outputs.ready == 'true'
+
+      - name: Deploy to Cloud Run
+        if: steps.configured.outputs.ready == 'true'
+        run: |
+          gcloud run deploy ethiclens-api \
+            --source . \
+            --region "${{ vars.GCP_REGION || 'us-central1' }}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --quiet
+
+      - name: Smoke test /health
+        if: steps.configured.outputs.ready == 'true' && vars.API_URL != ''
+        run: curl -fsS --max-time 30 "${{ vars.API_URL }}/health"

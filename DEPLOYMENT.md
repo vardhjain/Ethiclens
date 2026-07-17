@@ -89,6 +89,64 @@ existing env vars across deploys unless you explicitly change them). No git
 remote or manual sync step needed; it builds straight from your local working
 tree via Cloud Build.
 
+### Automatic redeploys via GitHub Actions (optional)
+
+`.github/workflows/deploy-api.yml` runs the same `gcloud run deploy
+ethiclens-api --source .` on every push to `main` that touches the API's
+source (path-filtered — frontend-only or docs-only commits don't trigger it).
+Same no-env-vars approach as the manual command above: it only needs
+permission to *deploy*, never your `DATABASE_URL`/`SECRET_KEY`/`*_API_KEY`
+values, which stay wherever you already set them on the Cloud Run service.
+
+It authenticates via **Workload Identity Federation** — no long-lived GCP key
+stored in GitHub. One-time setup (run once, locally, with `gcloud` logged in
+as a project owner):
+
+```bash
+PROJECT_ID="<your GCP project ID>"
+PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
+REPO="<your-github-username>/<repo-name>"   # e.g. octocat/ethiclens
+
+# 1. A dedicated service account the workflow will deploy as.
+gcloud iam service-accounts create github-deployer \
+  --project "$PROJECT_ID" --display-name "GitHub Actions Cloud Run deployer"
+
+# 2. Just enough to build (Cloud Build) and deploy (Cloud Run) from source.
+for ROLE in roles/run.admin roles/iam.serviceAccountUser roles/cloudbuild.builds.editor roles/storage.admin; do
+  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:github-deployer@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role="$ROLE"
+done
+
+# 3. A Workload Identity Pool + OIDC provider trusting GitHub's own token issuer.
+gcloud iam workload-identity-pools create github-pool \
+  --project "$PROJECT_ID" --location global --display-name "GitHub Actions"
+gcloud iam workload-identity-pools providers create-oidc github-provider \
+  --project "$PROJECT_ID" --location global --workload-identity-pool github-pool \
+  --issuer-uri "https://token.actions.githubusercontent.com" \
+  --attribute-mapping "google.subject=assertion.sub,attribute.repository=assertion.repository" \
+  --attribute-condition "assertion.repository=='${REPO}'"
+
+# 4. Let ONLY this specific repo impersonate the service account (no key ever
+#    leaves Google — GitHub's OIDC token is exchanged for short-lived creds).
+gcloud iam service-accounts add-iam-policy-binding \
+  "github-deployer@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --project "$PROJECT_ID" --role roles/iam.workloadIdentityUser \
+  --member "principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-pool/attribute.repository/${REPO}"
+```
+
+Then, repo → Settings → Secrets and variables → Actions → **Variables** tab,
+add:
+- `GCP_PROJECT_ID` = `$PROJECT_ID`
+- `GCP_WORKLOAD_IDENTITY_PROVIDER` =
+  `projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/providers/github-provider`
+- `GCP_SERVICE_ACCOUNT` = `github-deployer@$PROJECT_ID.iam.gserviceaccount.com`
+- `GCP_REGION` (optional — defaults to `us-central1` if unset)
+
+The workflow no-ops (skips every step, exits green) until all three required
+variables are set, so merging it before doing this setup is safe — same
+pattern as `keep-alive.yml`.
+
 ## 3. Vercel (frontend)
 
 1. Import the GitHub repo into Vercel. Root directory: `apps/web`. Framework
@@ -133,9 +191,11 @@ set, so merging it before you've done steps 1-3 is safe.
 
 ## What's intentionally not enabled here
 
-- **Per-IP rate limiting** (slowapi, ~5 audits/IP/day from the original plan)
-  — deferred until this is genuinely public-facing; not worth the dependency
-  against a demo only you and recruiters will hit.
+- **Per-IP rate limiting on the agent audit endpoints** (propose-schema/
+  run-audit/ask) — the daily LLM call budget (global + per-user caps, see
+  `agent_daily_llm_call_cap*` in `config.py`) is the guard there instead.
+  Login/register *are* IP-rate-limited (slowapi — see `rate_limit.py`), since
+  those are open, unauthenticated endpoints on a public demo.
 - **Model file uploads** — the agent pipeline only ever accepted predictions
   CSVs, never model files, so there's nothing to disable here; it was
   designed this way from the start (see agent/csv_ingest.py).
