@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ethiclens_api.config import get_settings
 from ethiclens_api.db import get_session
 from ethiclens_api.models import UserAccount
+from ethiclens_api.rate_limit import limiter
 from ethiclens_api.schemas import Token, UserCreate, UserOut
 from ethiclens_api.security import (
     authenticate,
@@ -21,7 +23,10 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-async def register(body: UserCreate, session: AsyncSession = Depends(get_session)) -> UserAccount:
+@limiter.limit(lambda: get_settings().auth_register_rate_limit)
+async def register(
+    request: Request, body: UserCreate, session: AsyncSession = Depends(get_session)
+) -> UserAccount:
     exists = await session.execute(select(UserAccount).where(UserAccount.email == body.email))
     if exists.scalar_one_or_none() is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
@@ -38,8 +43,11 @@ async def register(body: UserCreate, session: AsyncSession = Depends(get_session
 
 
 @router.post("/login", response_model=Token)
+@limiter.limit(lambda: get_settings().auth_login_rate_limit)
 async def login(
-    form: OAuth2PasswordRequestForm = Depends(), session: AsyncSession = Depends(get_session)
+    request: Request,
+    form: OAuth2PasswordRequestForm = Depends(),
+    session: AsyncSession = Depends(get_session),
 ) -> Token:
     user = await authenticate(session, form.username, form.password)
     if user is None:

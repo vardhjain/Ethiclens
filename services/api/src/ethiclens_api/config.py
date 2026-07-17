@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     # the whole day's budget for everyone else.
     agent_daily_llm_call_cap_per_user: int = 20
 
+    # Per-IP rate limits (slowapi / limits syntax: "<count>/<period>") on the two
+    # unauthenticated auth endpoints. Registration is open with no email verification
+    # or captcha, and login has no lockout — without these both are open brute-force /
+    # credential-stuffing / spam-registration vectors on a public demo.
+    auth_login_rate_limit: str = "10/minute"
+    auth_register_rate_limit: str = "5/minute"
+
 
 @lru_cache
 def get_settings() -> Settings:

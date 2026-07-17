@@ -20,6 +20,7 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 
 from ethiclens_api.db import Base, engine  # noqa: E402
 from ethiclens_api.main import app  # noqa: E402
+from ethiclens_api.rate_limit import limiter  # noqa: E402
 
 
 @pytest_asyncio.fixture
@@ -27,6 +28,13 @@ async def client() -> AsyncIterator[AsyncClient]:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
+    # The limiter is a module-level singleton shared by every test in this process
+    # (the app itself is a single import-time instance) — without resetting it here,
+    # rate-limit counters accumulate across tests instead of being scoped to one, and
+    # the dozens of tests that call the `auth` fixture (register + login) would
+    # eventually trip the login/register limits for tests that have nothing to do
+    # with rate limiting.
+    limiter.reset()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c

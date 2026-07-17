@@ -5,11 +5,15 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from ethiclens_api.config import get_settings
 from ethiclens_api.db import create_all
+from ethiclens_api.rate_limit import limiter
 from ethiclens_api.routers import agent, auth, governance, models, reports, sessions
 
 DESCRIPTION = (
@@ -34,6 +38,24 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="EthicLens API", version="0.1.0", description=DESCRIPTION, lifespan=lifespan
     )
+    app.state.limiter = limiter
+
+    # slowapi's own handler is typed for RateLimitExceeded specifically, which
+    # Starlette's add_exception_handler (typed for the general Exception) rejects
+    # under strict mypy parameter contravariance; this thin wrapper satisfies both.
+    async def _handle_rate_limit(request: Request, exc: Exception) -> Response:
+        assert isinstance(exc, RateLimitExceeded)
+        return _rate_limit_exceeded_handler(request, exc)
+
+    app.add_exception_handler(RateLimitExceeded, _handle_rate_limit)
+    # SlowAPIMiddleware can short-circuit a request with a 429 before it reaches the
+    # router. Starlette's add_middleware() prepends, so the middleware added LAST ends
+    # up OUTERMOST — CORSMiddleware must be added after SlowAPIMiddleware so it wraps
+    # it and still gets a chance to add CORS headers to that 429; added the other way
+    # around, a rate-limited response would bypass CORSMiddleware entirely and a
+    # cross-origin caller's browser would see an opaque failure instead of a
+    # readable 429.
+    app.add_middleware(SlowAPIMiddleware)
     # No allow_credentials: the frontend authenticates with a Bearer token in a header,
     # never cookies or fetch's credentials:'include', so there's no ambient credential
     # for CORS to protect here. Pairing allow_origins=["*"] with allow_credentials=True
