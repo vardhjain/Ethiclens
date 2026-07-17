@@ -132,10 +132,44 @@ function RecentAuditsCard() {
 const FAVORABLE = "favorable";
 const ADVERSE = "adverse";
 
+// A quoted header containing a comma (e.g. `"income, monthly"`) must not be split on
+// that comma — a naive `line.split(",")` mangles it into two garbage column names that
+// don't match anything the backend (which parses the CSV properly via pandas) reports,
+// leaving the proposal's Select/MultiSelect dropdowns silently empty for that column.
+function parseCsvHeaderLine(line: string): string[] {
+  const fields: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += char;
+      }
+    } else if (char === '"') {
+      inQuotes = true;
+    } else if (char === ",") {
+      fields.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  fields.push(current.trim());
+  return fields;
+}
+
 async function parseCsvColumns(file: File): Promise<string[]> {
   const text = await file.text();
   const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
-  return firstLine.split(",").map((c) => c.trim()).filter(Boolean);
+  return parseCsvHeaderLine(firstLine).filter(Boolean);
 }
 
 function columnsFromProposal(p: SchemaInferenceProposal): string[] {
@@ -229,11 +263,14 @@ export function AgentNewPage() {
             {demos.data?.map((d) => (
               <Card
                 key={d.key}
+                component="button"
+                type="button"
                 withBorder
                 padding="sm"
                 onClick={() => pickDemo(d)}
-                style={{ cursor: "pointer" }}
+                aria-pressed={demoKey === d.key}
                 bg={demoKey === d.key ? "blue.0" : undefined}
+                style={{ cursor: "pointer", textAlign: "left", width: "100%" }}
               >
                 <Stack gap={4}>
                   <Text size="sm" fw={600}>
