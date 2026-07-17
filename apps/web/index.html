@@ -4,6 +4,33 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>EthicLens — AI Bias Workbench</title>
+    <script>
+      // Mirrors @mantine/core's <ColorSchemeScript> verbatim (defaultColorScheme="auto",
+      // the default localStorageKey). There's no SSR here — index.html is static — so
+      // it can't be rendered as a component; inlined so the theme resolves before first
+      // paint instead of flashing light then switching to dark.
+      try {
+        var _colorScheme = window.localStorage.getItem(
+          "mantine-color-scheme-value",
+        );
+        var colorScheme =
+          _colorScheme === "light" ||
+          _colorScheme === "dark" ||
+          _colorScheme === "auto"
+            ? _colorScheme
+            : "auto";
+        var computedColorScheme =
+          colorScheme !== "auto"
+            ? colorScheme
+            : window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+        document.documentElement.setAttribute(
+          "data-mantine-color-scheme",
+          computedColorScheme,
+        );
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

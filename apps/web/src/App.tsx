@@ -1,4 +1,5 @@
 import {
+  ActionIcon,
   AppShell,
   Badge,
   Burger,
@@ -9,6 +10,8 @@ import {
   Paper,
   Stack,
   Title,
+  useComputedColorScheme,
+  useMantineColorScheme,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { lazy, Suspense } from "react";
@@ -35,6 +38,25 @@ function PageFallback() {
     <Center py="xl">
       <Loader />
     </Center>
+  );
+}
+
+function ColorSchemeToggle() {
+  const { setColorScheme } = useMantineColorScheme();
+  const computedColorScheme = useComputedColorScheme("light");
+
+  return (
+    <ActionIcon
+      variant="light"
+      color="gray"
+      size="lg"
+      aria-label="Toggle color scheme"
+      onClick={() =>
+        setColorScheme(computedColorScheme === "dark" ? "light" : "dark")
+      }
+    >
+      {computedColorScheme === "dark" ? "☀️" : "🌙"}
+    </ActionIcon>
   );
 }
 
@@ -106,6 +128,7 @@ function Shell({ children }: { children: React.ReactNode }) {
                 {role.replace(/_/g, " ")}
               </Badge>
             )}
+            <ColorSchemeToggle />
             <Button
               variant="light"
               color="gray"
