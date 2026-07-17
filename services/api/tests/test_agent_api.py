@@ -477,6 +477,50 @@ async def test_propose_schema_returns_429_once_daily_quota_is_exhausted(
     assert resp.status_code == 429
 
 
+async def test_propose_schema_returns_429_once_per_user_quota_is_exhausted(
+    client: AsyncClient, auth, monkeypatch
+) -> None:
+    """The per-user cap must trip even while the shared global cap still has room —
+    otherwise one user looping this endpoint can exhaust the whole day's budget for
+    everyone else before their own, tighter cap ever kicks in."""
+    _patch_llm(monkeypatch)
+    monkeypatch.setattr(agent_router.get_settings(), "agent_daily_llm_call_cap_per_user", 0)
+    headers = await auth(client)
+    resp = await client.post(
+        "/api/agent/propose-schema",
+        headers=headers,
+        files={"file": ("data.csv", _CSV, "text/csv")},
+    )
+    assert resp.status_code == 429
+
+
+async def test_per_user_quota_does_not_affect_other_users(
+    client: AsyncClient, auth, monkeypatch
+) -> None:
+    _patch_llm(monkeypatch)
+    monkeypatch.setattr(agent_router.get_settings(), "agent_daily_llm_call_cap_per_user", 1)
+    exhausted_headers = await auth(client, email="heavy-user@example.com")
+    await client.post(
+        "/api/agent/propose-schema",
+        headers=exhausted_headers,
+        files={"file": ("data.csv", _CSV, "text/csv")},
+    )
+    exhausted_resp = await client.post(
+        "/api/agent/propose-schema",
+        headers=exhausted_headers,
+        files={"file": ("data.csv", _CSV, "text/csv")},
+    )
+    assert exhausted_resp.status_code == 429
+
+    other_headers = await auth(client, email="other-user@example.com")
+    other_resp = await client.post(
+        "/api/agent/propose-schema",
+        headers=other_headers,
+        files={"file": ("data.csv", _CSV, "text/csv")},
+    )
+    assert other_resp.status_code == 200
+
+
 def _labeled_csv() -> str:
     import numpy as np
 

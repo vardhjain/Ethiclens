@@ -250,3 +250,21 @@ class UsageCounter(Base):
 
     day: Mapped[str] = mapped_column(String(10), primary_key=True)  # "YYYY-MM-DD"
     llm_calls: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class UserUsageCounter(Base):
+    """One row per (user, UTC calendar day): how many LLM calls that user has made.
+
+    UsageCounter alone caps total cost, but on a shared public demo a single user
+    calling propose-schema/run-audit/ask in a loop can exhaust the whole day's budget
+    for everyone else. This adds a much tighter per-user ceiling checked alongside the
+    global one.
+    """
+
+    __tablename__ = "user_usage_counter"
+
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("user_account.id", ondelete="CASCADE"), primary_key=True
+    )
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)  # "YYYY-MM-DD"
+    llm_calls: Mapped[int] = mapped_column(Integer, default=0)

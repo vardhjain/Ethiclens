@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     # returns 429, narrative/Q&A fall back to numeric-only / "unavailable" responses.
     agent_daily_llm_call_cap: int = 200
 
+    # Tighter per-user daily cap, checked alongside the global one. On a shared public
+    # demo, without this a single user looping propose-schema/run-audit/ask can exhaust
+    # the whole day's budget for everyone else.
+    agent_daily_llm_call_cap_per_user: int = 20
+
 
 @lru_cache
 def get_settings() -> Settings:

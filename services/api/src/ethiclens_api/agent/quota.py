@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from uuid import UUID
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ethiclens_api.db import engine
-from ethiclens_api.models import UsageCounter
+from ethiclens_api.models import UsageCounter, UserUsageCounter
 
 _log = logging.getLogger("ethiclens.agent.quota")
 
@@ -31,23 +32,41 @@ async def llm_calls_remaining(db: AsyncSession, daily_cap: int) -> int:
     return max(0, daily_cap - used)
 
 
-async def record_llm_call(db: AsyncSession) -> None:
-    """Atomically increment today's counter. Call once per actual LLM call that goes out.
+async def user_llm_calls_remaining(db: AsyncSession, user_id: UUID, daily_cap: int) -> int:
+    """How many more LLM calls this user may make today (never negative)."""
+    counter = await db.get(UserUsageCounter, (user_id, _today()))
+    used = counter.llm_calls if counter is not None else 0
+    return max(0, daily_cap - used)
 
-    A read-modify-write (``db.get`` -> ``+= 1`` -> commit) loses increments under
-    concurrency: two requests can both read the same value and one increment vanishes,
-    silently under-counting usage against the daily cap. An upsert makes the increment
-    a single statement the database serializes, so no update is lost. Dialect-specific
-    because SQLAlchemy's ``ON CONFLICT DO UPDATE`` construct isn't generic SQL — tests
-    run on SQLite, production on Postgres.
+
+async def record_llm_call(db: AsyncSession, user_id: UUID) -> None:
+    """Atomically increment today's global and per-user counters.
+
+    Call once per actual LLM call that goes out. A read-modify-write (``db.get`` ->
+    ``+= 1`` -> commit) loses increments under concurrency: two requests can both read
+    the same value and one increment vanishes, silently under-counting usage against
+    the daily cap. An upsert makes each increment a single statement the database
+    serializes, so no update is lost. Dialect-specific because SQLAlchemy's
+    ``ON CONFLICT DO UPDATE`` construct isn't generic SQL — tests run on SQLite,
+    production on Postgres.
     """
     insert = pg_insert if engine.dialect.name == "postgresql" else sqlite_insert
-    stmt = insert(UsageCounter).values(day=_today(), llm_calls=1)
-    stmt = stmt.on_conflict_do_update(
+    today = _today()
+
+    global_stmt = insert(UsageCounter).values(day=today, llm_calls=1)
+    global_stmt = global_stmt.on_conflict_do_update(
         index_elements=[UsageCounter.day],
         set_={"llm_calls": UsageCounter.llm_calls + 1},
     )
-    await db.execute(stmt)
+    await db.execute(global_stmt)
+
+    user_stmt = insert(UserUsageCounter).values(user_id=user_id, day=today, llm_calls=1)
+    user_stmt = user_stmt.on_conflict_do_update(
+        index_elements=[UserUsageCounter.user_id, UserUsageCounter.day],
+        set_={"llm_calls": UserUsageCounter.llm_calls + 1},
+    )
+    await db.execute(user_stmt)
+
     await db.commit()
 
 
@@ -55,4 +74,13 @@ async def has_budget(db: AsyncSession, daily_cap: int) -> bool:
     remaining = await llm_calls_remaining(db, daily_cap)
     if remaining <= 0:
         _log.warning("Daily LLM call budget exhausted (cap=%d)", daily_cap)
+    return remaining > 0
+
+
+async def has_user_budget(db: AsyncSession, user_id: UUID, daily_cap: int) -> bool:
+    remaining = await user_llm_calls_remaining(db, user_id, daily_cap)
+    if remaining <= 0:
+        _log.warning(
+            "Per-user daily LLM call budget exhausted (user=%s, cap=%d)", user_id, daily_cap
+        )
     return remaining > 0

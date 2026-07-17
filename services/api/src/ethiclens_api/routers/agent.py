@@ -40,7 +40,7 @@ from ethiclens_api.agent.executor import execute_plan, measure_top_mitigation
 from ethiclens_api.agent.llm_client import LLMCallError, build_default_client_or_none
 from ethiclens_api.agent.narrative import build_scorecard, generate_narrative, unavailable_result
 from ethiclens_api.agent.qa import ask
-from ethiclens_api.agent.quota import has_budget, record_llm_call
+from ethiclens_api.agent.quota import has_budget, has_user_budget, record_llm_call
 from ethiclens_api.agent.schema_inference import infer_schema
 from ethiclens_api.agent.schemas import AskRequest, SchemaInferenceProposal
 from ethiclens_api.config import get_settings
@@ -132,7 +132,13 @@ async def _run_and_persist(
     scorecard, _recommendations = build_scorecard(result, plan, measured_mitigation)
 
     client = build_default_client_or_none(settings.groq_api_key, settings.gemini_api_key)
-    if client is not None and await has_budget(db, settings.agent_daily_llm_call_cap):
+    has_quota = (
+        client is not None
+        and await has_budget(db, settings.agent_daily_llm_call_cap)
+        and await has_user_budget(db, user.id, settings.agent_daily_llm_call_cap_per_user)
+    )
+    if has_quota:
+        assert client is not None
         try:
             narrative_result = await asyncio.to_thread(generate_narrative, client, scorecard)
         except LLMCallError as exc:
@@ -141,7 +147,7 @@ async def _run_and_persist(
             # narrative rather than discard a completed audit with a bare 500.
             _log.warning("Narrative generation failed, degrading to numeric-only: %s", exc)
             narrative_result = unavailable_result(scorecard)
-        await record_llm_call(db)
+        await record_llm_call(db, user.id)
     else:
         if client is None:
             _log.info("No LLM provider configured; narrative will be numeric-only")
@@ -196,6 +202,11 @@ async def propose_schema(
             status.HTTP_429_TOO_MANY_REQUESTS,
             "Daily LLM call budget exhausted; try again tomorrow.",
         )
+    if not await has_user_budget(db, user.id, settings.agent_daily_llm_call_cap_per_user):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Your daily LLM call budget is exhausted; try again tomorrow.",
+        )
     data = await read_predictions_csv(
         file,
         max_mb=settings.agent_max_upload_mb,
@@ -210,7 +221,7 @@ async def propose_schema(
             "Schema inference is temporarily unavailable (all LLM providers failed). "
             "Try again shortly.",
         ) from exc
-    await record_llm_call(db)
+    await record_llm_call(db, user.id)
     return proposal
 
 
@@ -376,6 +387,11 @@ async def ask_about_record(
             status.HTTP_429_TOO_MANY_REQUESTS,
             "Daily LLM call budget exhausted; try again tomorrow.",
         )
+    if not await has_user_budget(db, user.id, settings.agent_daily_llm_call_cap_per_user):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Your daily LLM call budget is exhausted; try again tomorrow.",
+        )
     try:
         result = await asyncio.to_thread(ask, client, record.scorecard, body.question)
     except LLMCallError as exc:
@@ -383,5 +399,5 @@ async def ask_about_record(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "Q&A is temporarily unavailable (all LLM providers failed). Try again shortly.",
         ) from exc
-    await record_llm_call(db)
+    await record_llm_call(db, user.id)
     return {"answer": result.answer, "grounded": result.grounded, "degraded": result.degraded}
