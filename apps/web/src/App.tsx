@@ -1,4 +1,5 @@
-import { AppShell, Button, Group, Title } from "@mantine/core";
+import { AppShell, Badge, Burger, Button, Group, Paper, Stack, Title } from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
 import { Navigate, Link, Route, Routes, useNavigate } from "react-router-dom";
 import { useAuth } from "./auth";
 import { AgentNewPage } from "./pages/AgentNew";
@@ -9,35 +10,84 @@ import { SessionDetailPage } from "./pages/SessionDetail";
 import { SessionsPage } from "./pages/Sessions";
 
 function Shell({ children }: { children: React.ReactNode }) {
-  const { logout } = useAuth();
+  const { logout, role } = useAuth();
   const nav = useNavigate();
+  // Below the `sm` breakpoint the three nav links don't fit alongside the title and
+  // Sign out button in the fixed-height header — they used to wrap onto extra lines
+  // that spilled out of the header and over the page content. Collapse them into a
+  // burger-triggered dropdown instead of letting that happen. Plain conditional
+  // rendering rather than AppShell.Navbar's collapse mechanism or a Drawer/Modal:
+  // both route the content through a CSS-variable-driven breakpoint system / portal
+  // that never reflected the opened state changing in this Mantine version, even
+  // though the state itself was confirmed toggling correctly on every click.
+  const [opened, { toggle, close }] = useDisclosure();
+
+  const navLinks = (
+    <>
+      <Button variant="subtle" component={Link} to="/" onClick={close} justify="start" fullWidth>
+        Sessions
+      </Button>
+      <Button
+        variant="subtle"
+        component={Link}
+        to="/new"
+        onClick={close}
+        justify="start"
+        fullWidth
+      >
+        New audit
+      </Button>
+      <Button
+        variant="subtle"
+        component={Link}
+        to="/agent/new"
+        onClick={close}
+        justify="start"
+        fullWidth
+      >
+        Agent audit
+      </Button>
+    </>
+  );
+
   return (
     <AppShell header={{ height: 56 }} padding="md">
-      <AppShell.Header>
+      <AppShell.Header style={{ position: "relative" }}>
         <Group h="100%" px="md" justify="space-between">
           <Group>
+            <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
             <Title order={4}>⚖️ EthicLens</Title>
-            <Button variant="subtle" component={Link} to="/">
-              Sessions
-            </Button>
-            <Button variant="subtle" component={Link} to="/new">
-              New audit
-            </Button>
-            <Button variant="subtle" component={Link} to="/agent/new">
-              Agent audit
+            <Group visibleFrom="sm">{navLinks}</Group>
+          </Group>
+          <Group>
+            {role && (
+              <Badge variant="light" tt="capitalize" visibleFrom="sm">
+                {role.replace(/_/g, " ")}
+              </Badge>
+            )}
+            <Button
+              variant="light"
+              color="gray"
+              onClick={() => {
+                logout();
+                nav("/login");
+              }}
+            >
+              Sign out
             </Button>
           </Group>
-          <Button
-            variant="light"
-            color="gray"
-            onClick={() => {
-              logout();
-              nav("/login");
-            }}
-          >
-            Sign out
-          </Button>
         </Group>
+        {opened && (
+          <Paper
+            hiddenFrom="sm"
+            withBorder
+            shadow="md"
+            p="sm"
+            style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 199 }}
+          >
+            <Stack gap={4}>{navLinks}</Stack>
+          </Paper>
+        )}
       </AppShell.Header>
       <AppShell.Main>{children}</AppShell.Main>
     </AppShell>
