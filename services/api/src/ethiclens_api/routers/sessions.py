@@ -94,7 +94,12 @@ async def run_session(
     obj.status = SessionStatus.QUEUED
     await db.commit()
     job_id = await enqueue_audit(session_id)
-    fresh = await db.get(AuditSession, session_id)
+    # Eager mode (tests/dev) runs the audit synchronously above via a separate
+    # session (see execute_audit); with expire_on_commit=False, `db`'s identity map
+    # still holds the pre-audit QUEUED object, so a plain get() would return that
+    # stale copy instead of the now-current status. populate_existing forces a
+    # re-fetch.
+    fresh = await db.get(AuditSession, session_id, populate_existing=True)
     return {"session_id": str(session_id), "status": fresh.status.value, "job_id": job_id}
 
 

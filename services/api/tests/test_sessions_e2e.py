@@ -27,6 +27,34 @@ async def _completed_flagged_session(client: AsyncClient, headers: dict[str, str
     return session_id
 
 
+async def test_run_response_reports_post_audit_status_not_stale_queued(
+    client: AsyncClient, auth
+) -> None:
+    """In eager mode, execute_audit runs synchronously via its own separate
+    AsyncSession before /run responds. The endpoint's own `db` session set this
+    row to QUEUED and committed with expire_on_commit=False, so without
+    populate_existing a plain get() returns that stale in-memory copy instead of
+    the COMPLETED/FLAGGED status the audit just committed."""
+    headers = await auth(client)
+    create = await client.post(
+        "/api/sessions/create",
+        headers=headers,
+        json={
+            "name": "Lending audit",
+            "dataset": "synthetic",
+            "protected_attributes": [{"name": "race"}],
+            "target": "approved",
+        },
+    )
+    session_id = create.json()["id"]
+
+    run = await client.post(f"/api/sessions/{session_id}/run", headers=headers)
+    assert run.status_code == 202
+    assert run.json()["status"] in {"COMPLETED", "FLAGGED"}, (
+        "run response reported a stale pre-audit status"
+    )
+
+
 async def test_full_pipeline(client: AsyncClient, auth) -> None:
     headers = await auth(client)
     session_id = await _completed_flagged_session(client, headers)
