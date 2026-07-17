@@ -34,10 +34,15 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="EthicLens API", version="0.1.0", description=DESCRIPTION, lifespan=lifespan
     )
+    # No allow_credentials: the frontend authenticates with a Bearer token in a header,
+    # never cookies or fetch's credentials:'include', so there's no ambient credential
+    # for CORS to protect here. Pairing allow_origins=["*"] with allow_credentials=True
+    # is also invalid per the Fetch spec for credentialed requests — Starlette sends a
+    # literal "Access-Control-Allow-Origin: *" (not a reflected origin) in that
+    # combination, which spec-compliant browsers must refuse for credentialed responses.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
