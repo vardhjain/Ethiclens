@@ -19,7 +19,11 @@ import { notifications } from "@mantine/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, type DemoDataset, type SchemaInferenceProposal } from "../api/client";
+import {
+  api,
+  type DemoDataset,
+  type SchemaInferenceProposal,
+} from "../api/client";
 import { QueryError } from "../components/QueryError";
 
 // Mirrors the real pipeline stages (routers/agent.py's _run_and_persist), but the
@@ -100,7 +104,9 @@ function RecentAuditsCard() {
                   <Table.Td>{r.outcome_column}</Table.Td>
                   <Table.Td>
                     <Group gap={4}>
-                      <Text size="sm">{r.composite_score?.toFixed(3) ?? "—"}</Text>
+                      <Text size="sm">
+                        {r.composite_score?.toFixed(3) ?? "—"}
+                      </Text>
                       {r.composite_band && (
                         <Badge size="xs" variant="light">
                           {r.composite_band}
@@ -136,7 +142,7 @@ const ADVERSE = "adverse";
 // that comma — a naive `line.split(",")` mangles it into two garbage column names that
 // don't match anything the backend (which parses the CSV properly via pandas) reports,
 // leaving the proposal's Select/MultiSelect dropdowns silently empty for that column.
-function parseCsvHeaderLine(line: string): string[] {
+export function parseCsvHeaderLine(line: string): string[] {
   const fields: string[] = [];
   let current = "";
   let inQuotes = false;
@@ -189,12 +195,17 @@ export function AgentNewPage() {
   const [file, setFile] = useState<File | null>(null);
   const [demoKey, setDemoKey] = useState<string | null>(null);
   const [columns, setColumns] = useState<string[]>([]);
-  const [proposal, setProposal] = useState<SchemaInferenceProposal | null>(null);
+  const [proposal, setProposal] = useState<SchemaInferenceProposal | null>(
+    null,
+  );
   const [analyzing, setAnalyzing] = useState(false);
   const [running, setRunning] = useState(false);
   const runStageMessage = useRunStageMessage(running);
 
-  const demos = useQuery({ queryKey: ["demo-datasets"], queryFn: () => api.demoDatasets() });
+  const demos = useQuery({
+    queryKey: ["demo-datasets"],
+    queryFn: () => api.demoDatasets(),
+  });
 
   function resetSelection() {
     setFile(null);
@@ -214,7 +225,10 @@ export function AgentNewPage() {
     if (!file) return;
     setAnalyzing(true);
     try {
-      const [cols, result] = await Promise.all([parseCsvColumns(file), api.proposeSchema(file)]);
+      const [cols, result] = await Promise.all([
+        parseCsvColumns(file),
+        api.proposeSchema(file),
+      ]);
       setColumns(cols);
       setProposal(result);
     } catch (e) {
@@ -256,8 +270,9 @@ export function AgentNewPage() {
         <Stack>
           <Text fw={600}>Try a demo dataset</Text>
           <Text size="sm" c="dimmed">
-            No upload needed — each one exercises a different part of the pipeline (a real
-            measured mitigation, a projected-only fallback, and a no-ground-truth audit).
+            No upload needed — each one exercises a different part of the
+            pipeline (a real measured mitigation, a projected-only fallback, and
+            a no-ground-truth audit).
           </Text>
           <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
             {demos.data?.map((d) => (
@@ -290,8 +305,9 @@ export function AgentNewPage() {
         <Stack>
           <Text fw={600}>Or upload your own predictions CSV</Text>
           <Text size="sm" c="dimmed">
-            CSV should contain the model&apos;s predictions, a protected attribute (e.g. race,
-            sex), and optionally true labels. 5MB / 50,000 row limit.
+            CSV should contain the model&apos;s predictions, a protected
+            attribute (e.g. race, sex), and optionally true labels. 5MB / 50,000
+            row limit.
           </Text>
           <FileInput
             label="Predictions CSV"
@@ -317,9 +333,9 @@ export function AgentNewPage() {
               {demoKey && <Badge variant="light">Demo dataset</Badge>}
             </Group>
             <Alert color="yellow" title="Review before running">
-              This is the agent&apos;s proposal, not a final decision — check it carefully,
-              especially the outcome direction. Getting it backwards inverts every fairness
-              finding.
+              This is the agent&apos;s proposal, not a final decision — check it
+              carefully, especially the outcome direction. Getting it backwards
+              inverts every fairness finding.
             </Alert>
             <Text size="sm" c="dimmed">
               Agent&apos;s reasoning: {proposal.reasoning}
@@ -329,7 +345,9 @@ export function AgentNewPage() {
               label="Protected attribute columns"
               data={columns}
               value={proposal.protected_attribute_columns}
-              onChange={(v) => updateProposal({ protected_attribute_columns: v })}
+              onChange={(v) =>
+                updateProposal({ protected_attribute_columns: v })
+              }
             />
             <Select
               label="Outcome / prediction column"
@@ -355,7 +373,11 @@ export function AgentNewPage() {
                 { value: FAVORABLE, label: "Favorable (e.g. loan approved)" },
                 { value: ADVERSE, label: "Adverse (e.g. flagged high-risk)" },
               ]}
-              value={proposal.outcome_direction.positive_is_favorable ? FAVORABLE : ADVERSE}
+              value={
+                proposal.outcome_direction.positive_is_favorable
+                  ? FAVORABLE
+                  : ADVERSE
+              }
               onChange={(v) =>
                 updateProposal({
                   outcome_direction: {
