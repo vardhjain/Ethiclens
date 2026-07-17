@@ -8,7 +8,14 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 # Configure the app for tests BEFORE importing it (settings are cached).
-_DB_FILE = Path(tempfile.gettempdir()) / "ethiclens_api_test.db"
+# PID-salted: a fixed shared filename here means two pytest processes running
+# concurrently against this repo (parallel CI shards, a developer running tests
+# locally while CI also runs them, two agents/sessions both testing this repo) step
+# on the same file — one process's drop_all/create_all mid-flight under another's
+# in-progress transaction produces exactly "no such table" on a DROP, "UNIQUE
+# constraint failed" on a fresh insert, and stale-row UPDATE/DELETE errors, all
+# indistinguishable from a genuine app bug until you look for a second writer.
+_DB_FILE = Path(tempfile.gettempdir()) / f"ethiclens_api_test_{os.getpid()}.db"
 os.environ.setdefault("DATABASE_URL", f"sqlite+aiosqlite:///{_DB_FILE.as_posix()}")
 os.environ.setdefault("EAGER_TASKS", "true")
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
