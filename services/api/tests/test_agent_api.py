@@ -105,6 +105,21 @@ async def test_propose_schema_without_llm_key_returns_503(
     assert resp.status_code == 503
 
 
+async def test_propose_schema_rejects_too_many_columns(
+    client: AsyncClient, auth, monkeypatch
+) -> None:
+    _patch_llm(monkeypatch)
+    monkeypatch.setattr(agent_router.get_settings(), "agent_max_columns", 2)
+    headers = await auth(client)
+    resp = await client.post(
+        "/api/agent/propose-schema",
+        headers=headers,
+        files={"file": ("data.csv", _CSV, "text/csv")},  # _CSV has 3 columns: race,flag,score
+    )
+    assert resp.status_code == 400
+    assert "columns" in resp.json()["detail"]
+
+
 async def test_propose_schema_returns_503_when_all_llm_providers_fail(
     client: AsyncClient, auth, monkeypatch
 ) -> None:

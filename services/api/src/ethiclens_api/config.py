@@ -34,9 +34,12 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
 
     # Agent CSV upload caps (predictions-only ingestion; no model files, no persistence
-    # of raw rows — only the resulting audit record is stored).
+    # of raw rows — only the resulting audit record is stored). agent_max_columns bounds
+    # the Stage 1 prompt: every column name goes into it verbatim, and 100 is already
+    # generous for a predictions CSV (protected attributes + outcome + features).
     agent_max_upload_mb: int = 5
     agent_max_rows: int = 50_000
+    agent_max_columns: int = 100
 
     # Hard daily cap on LLM calls across all users (~80% of a free-tier quota in
     # practice). Once hit, the agent degrades instead of erroring: schema inference

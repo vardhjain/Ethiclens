@@ -23,7 +23,9 @@ class CsvIngestError(HTTPException):
         super().__init__(status.HTTP_400_BAD_REQUEST, detail)
 
 
-async def read_predictions_csv(file: UploadFile, *, max_mb: int, max_rows: int) -> pd.DataFrame:
+async def read_predictions_csv(
+    file: UploadFile, *, max_mb: int, max_rows: int, max_columns: int = 100
+) -> pd.DataFrame:
     max_bytes = max_mb * 1024 * 1024
     chunks: list[bytes] = []
     total_bytes = 0
@@ -43,5 +45,9 @@ async def read_predictions_csv(file: UploadFile, *, max_mb: int, max_rows: int) 
         raise CsvIngestError(f"Upload has {len(df)} rows; the limit is {max_rows}")
     if df.empty or len(df.columns) == 0:
         raise CsvIngestError("CSV has no rows or columns")
+    # Every column name is sent verbatim into the Stage 1 schema-inference prompt —
+    # bound it so an upload with hundreds of columns can't inflate that prompt unbounded.
+    if len(df.columns) > max_columns:
+        raise CsvIngestError(f"Upload has {len(df.columns)} columns; the limit is {max_columns}")
 
     return df

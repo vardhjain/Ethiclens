@@ -40,6 +40,22 @@ async def test_read_predictions_csv_rejects_too_many_rows() -> None:
     assert "10 rows" in exc_info.value.detail
 
 
+async def test_read_predictions_csv_rejects_too_many_columns() -> None:
+    # Every column name is sent verbatim into the Stage 1 prompt; this bounds that.
+    columns = [f"col{i}" for i in range(10)]
+    csv = ",".join(columns) + "\n" + ",".join("1" for _ in columns) + "\n"
+    with pytest.raises(CsvIngestError) as exc_info:
+        await read_predictions_csv(_upload(csv), max_mb=5, max_rows=50_000, max_columns=5)
+    assert exc_info.value.status_code == 400
+    assert "10 columns" in exc_info.value.detail
+
+
+async def test_read_predictions_csv_default_column_cap_allows_normal_csvs() -> None:
+    csv = "race,flag,score\nA,1,0.5\n"
+    df = await read_predictions_csv(_upload(csv), max_mb=5, max_rows=50_000)
+    assert list(df.columns) == ["race", "flag", "score"]
+
+
 async def test_read_predictions_csv_rejects_empty_csv() -> None:
     with pytest.raises(CsvIngestError):
         await read_predictions_csv(_upload(""), max_mb=5, max_rows=50_000)

@@ -197,7 +197,10 @@ async def propose_schema(
             "Daily LLM call budget exhausted; try again tomorrow.",
         )
     data = await read_predictions_csv(
-        file, max_mb=settings.agent_max_upload_mb, max_rows=settings.agent_max_rows
+        file,
+        max_mb=settings.agent_max_upload_mb,
+        max_rows=settings.agent_max_rows,
+        max_columns=settings.agent_max_columns,
     )
     try:
         proposal = await asyncio.to_thread(infer_schema, client, data)
@@ -233,7 +236,10 @@ async def run_audit_endpoint(
 
     settings = get_settings()
     data = await read_predictions_csv(
-        file, max_mb=settings.agent_max_upload_mb, max_rows=settings.agent_max_rows
+        file,
+        max_mb=settings.agent_max_upload_mb,
+        max_rows=settings.agent_max_rows,
+        max_columns=settings.agent_max_columns,
     )
     return await _run_and_persist(proposal, data, db, user)
 
