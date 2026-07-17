@@ -149,3 +149,43 @@ def test_build_default_client_or_none_with_groq_key_only() -> None:
     pytest.importorskip("groq")
     client = build_default_client_or_none("fake-groq-key", None)
     assert client is not None
+
+
+def test_groq_client_requests_native_json_mode() -> None:
+    """Every caller goes through complete_json, which always wants a single JSON
+    object back — native JSON mode avoids markdown-fence/prose parse failures that
+    would otherwise burn a retry (a second call) against the daily quota."""
+    pytest.importorskip("groq")
+    from ethiclens_api.agent.llm_client import GroqClient
+
+    client = GroqClient("fake-key")
+    captured = {}
+
+    class _FakeCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+
+            class _Choice:
+                message = type("Msg", (), {"content": "{}"})()
+
+            return type("Resp", (), {"choices": [_Choice()]})()
+
+    client._client.chat.completions = _FakeCompletions()
+    client.complete("system", "prompt")
+    assert captured["response_format"] == {"type": "json_object"}
+
+
+def test_gemini_client_requests_native_json_mode() -> None:
+    pytest.importorskip("google.genai")
+    from ethiclens_api.agent.llm_client import GeminiClient
+
+    client = GeminiClient("fake-key")
+    captured = {}
+
+    def _fake_generate_content(**kwargs):
+        captured.update(kwargs)
+        return type("Resp", (), {"text": "{}"})()
+
+    client._client.models.generate_content = _fake_generate_content
+    client.complete("system", "prompt")
+    assert captured["config"]["response_mime_type"] == "application/json"

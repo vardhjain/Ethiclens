@@ -103,6 +103,10 @@ class GroqClient:
         self._model = model
 
     def complete(self, system: str, prompt: str) -> str:
+        # Every caller of .complete() goes through complete_json, which always wants a
+        # single JSON object back — native JSON mode skips the markdown-fence/prose
+        # wrapping that otherwise burns a retry (and a second call against the daily
+        # quota) on an easily-avoidable parse failure.
         response = self._client.chat.completions.create(
             model=self._model,
             messages=[
@@ -110,6 +114,7 @@ class GroqClient:
                 {"role": "user", "content": prompt},
             ],
             temperature=0,
+            response_format={"type": "json_object"},
         )
         return response.choices[0].message.content or ""
 
@@ -132,10 +137,15 @@ class GeminiClient:
         self._model = model
 
     def complete(self, system: str, prompt: str) -> str:
+        # See GroqClient.complete: every caller wants a single JSON object back.
         response = self._client.models.generate_content(
             model=self._model,
             contents=prompt,
-            config={"system_instruction": system, "temperature": 0},
+            config={
+                "system_instruction": system,
+                "temperature": 0,
+                "response_mime_type": "application/json",
+            },
         )
         return response.text or ""
 
