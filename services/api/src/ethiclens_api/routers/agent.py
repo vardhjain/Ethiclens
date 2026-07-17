@@ -10,6 +10,8 @@ unconfirmed guess" and "no data persistence" guardrails:
    resulting scorecard/narrative, never the raw rows.
 3. ``POST /api/agent/records/{id}/ask`` — Stage 5: ask a grounded question about a
    stored record; retrieves from its scorecard JSON, never from model memory.
+   ``GET /api/agent/records`` lists the caller's own past records (summary fields
+   only); ``GET /api/agent/records/{id}`` returns one in full.
 4. ``GET /api/agent/demo-datasets`` / ``POST /api/agent/demo-audit`` — one-click
    canned datasets shipped with the app, so a visitor never has to bring their own
    CSV. Skips Stage 1 (the proposal is hand-verified, checked into
@@ -28,6 +30,7 @@ from uuid import UUID
 import pandas as pd
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, ValidationError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ethiclens_api.agent.audit_planner import plan_audit
@@ -277,6 +280,53 @@ async def demo_audit_endpoint(
     proposal = body.proposal or dataset.proposal
     data = _load_demo_dataframe(str(dataset.csv_path))
     return await _run_and_persist(proposal, data, db, user)
+
+
+class AgentRecordSummary(BaseModel):
+    record_id: str
+    created_at: str
+    outcome_column: str
+    composite_score: float | None
+    composite_band: str | None
+    grounded: bool
+    degraded: bool
+
+
+@router.get("/records", response_model=list[AgentRecordSummary])
+async def list_records(
+    db: AsyncSession = Depends(get_session),
+    user: UserAccount = Depends(get_current_user),
+) -> list[AgentRecordSummary]:
+    """Every agent audit record the caller owns, most recent first.
+
+    Without this, a completed audit is a dead end: there is no way back to a report
+    once the user navigates away from it. Capped at 50 — a personal history list, not
+    a paginated archive.
+    """
+    rows = (
+        (
+            await db.execute(
+                select(AgentAuditRecord)
+                .where(AgentAuditRecord.owner_id == user.id)
+                .order_by(AgentAuditRecord.created_at.desc())
+                .limit(50)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        AgentRecordSummary(
+            record_id=str(r.id),
+            created_at=r.created_at.isoformat(),
+            outcome_column=r.outcome_column,
+            composite_score=r.scorecard.get("composite_score"),
+            composite_band=r.scorecard.get("composite_band"),
+            grounded=r.grounded,
+            degraded=r.degraded,
+        )
+        for r in rows
+    ]
 
 
 @router.get("/records/{record_id}")

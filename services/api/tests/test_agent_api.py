@@ -143,6 +143,78 @@ async def test_run_audit_persists_and_returns_report(
     assert fetched.json()["narrative"] == body["narrative"]
 
 
+async def test_list_records_returns_empty_list_for_new_user(client: AsyncClient, auth) -> None:
+    headers = await auth(client)
+    resp = await client.get("/api/agent/records", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+async def test_list_records_returns_summary_of_owned_records(
+    client: AsyncClient, auth, monkeypatch
+) -> None:
+    _patch_llm(monkeypatch)
+    headers = await auth(client)
+    run = await client.post(
+        "/api/agent/run-audit",
+        headers=headers,
+        files={"file": ("data.csv", _CSV, "text/csv")},
+        data={"proposal_json": json.dumps(_PROPOSAL)},
+    )
+    record_id = run.json()["record_id"]
+
+    resp = await client.get("/api/agent/records", headers=headers)
+    assert resp.status_code == 200
+    summaries = resp.json()
+    assert len(summaries) == 1
+    summary = summaries[0]
+    assert summary["record_id"] == record_id
+    assert summary["outcome_column"] == "flag"
+    assert summary["grounded"] is True
+    assert summary["degraded"] is False
+    assert summary["composite_band"] is not None
+    assert isinstance(summary["composite_score"], float)
+
+
+async def test_list_records_orders_most_recent_first(
+    client: AsyncClient, auth, monkeypatch
+) -> None:
+    _patch_llm(monkeypatch)
+    headers = await auth(client)
+    ids = []
+    for _ in range(3):
+        run = await client.post(
+            "/api/agent/run-audit",
+            headers=headers,
+            files={"file": ("data.csv", _CSV, "text/csv")},
+            data={"proposal_json": json.dumps(_PROPOSAL)},
+        )
+        ids.append(run.json()["record_id"])
+
+    resp = await client.get("/api/agent/records", headers=headers)
+    returned_ids = [r["record_id"] for r in resp.json()]
+    assert returned_ids == list(reversed(ids))
+
+
+async def test_list_records_does_not_return_another_users_records(
+    client: AsyncClient, auth, monkeypatch
+) -> None:
+    """Security-critical: a user must never see another user's audit records."""
+    _patch_llm(monkeypatch)
+    owner_headers = await auth(client, email="owner@example.com")
+    await client.post(
+        "/api/agent/run-audit",
+        headers=owner_headers,
+        files={"file": ("data.csv", _CSV, "text/csv")},
+        data={"proposal_json": json.dumps(_PROPOSAL)},
+    )
+
+    other_headers = await auth(client, email="other@example.com")
+    resp = await client.get("/api/agent/records", headers=other_headers)
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
 async def test_run_audit_does_not_block_the_event_loop(
     client: AsyncClient, auth, monkeypatch
 ) -> None:
