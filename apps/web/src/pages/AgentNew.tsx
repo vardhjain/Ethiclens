@@ -5,19 +5,129 @@ import {
   Card,
   FileInput,
   Group,
+  Loader,
   MultiSelect,
   Select,
   SimpleGrid,
   Stack,
+  Table,
   Text,
   TextInput,
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { api, type DemoDataset, type SchemaInferenceProposal } from "../api/client";
+import { QueryError } from "../components/QueryError";
+
+// Mirrors the real pipeline stages (routers/agent.py's _run_and_persist), but the
+// backend runs them as one request with no incremental progress events — this is
+// perceived progress, not observed progress. Advances on a timer and holds at the
+// last message rather than looping, so a genuinely slow run doesn't look stuck or
+// cycle back to "Planning" while still working.
+const RUN_STAGE_MESSAGES = [
+  "Planning the audit…",
+  "Computing fairness metrics…",
+  "Measuring mitigation…",
+  "Writing the narrative…",
+];
+
+function useRunStageMessage(active: boolean): string {
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    if (!active) {
+      setIndex(0);
+      return;
+    }
+    const id = setInterval(() => {
+      setIndex((i) => Math.min(i + 1, RUN_STAGE_MESSAGES.length - 1));
+    }, 2500);
+    return () => clearInterval(id);
+  }, [active]);
+  return RUN_STAGE_MESSAGES[index];
+}
+
+function RecentAuditsCard() {
+  const records = useQuery({
+    queryKey: ["agent-records"],
+    queryFn: () => api.listAgentRecords(),
+  });
+
+  if (records.isLoading) {
+    return (
+      <Card withBorder>
+        <Loader size="sm" />
+      </Card>
+    );
+  }
+  if (records.isError) {
+    return (
+      <Card withBorder>
+        <QueryError
+          error={records.error}
+          onRetry={() => records.refetch()}
+          title="Couldn't load recent audits"
+        />
+      </Card>
+    );
+  }
+  if (!records.data || records.data.length === 0) return null;
+
+  return (
+    <Card withBorder>
+      <Stack gap="sm">
+        <Text fw={600}>Recent audits</Text>
+        <Table.ScrollContainer minWidth={500}>
+          <Table highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Run</Table.Th>
+                <Table.Th>Outcome column</Table.Th>
+                <Table.Th>Composite</Table.Th>
+                <Table.Th>Status</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {records.data.map((r) => (
+                <Table.Tr key={r.record_id}>
+                  <Table.Td>
+                    <Link to={`/agent/records/${r.record_id}`}>
+                      {new Date(r.created_at).toLocaleString()}
+                    </Link>
+                  </Table.Td>
+                  <Table.Td>{r.outcome_column}</Table.Td>
+                  <Table.Td>
+                    <Group gap={4}>
+                      <Text size="sm">{r.composite_score?.toFixed(3) ?? "—"}</Text>
+                      {r.composite_band && (
+                        <Badge size="xs" variant="light">
+                          {r.composite_band}
+                        </Badge>
+                      )}
+                    </Group>
+                  </Table.Td>
+                  <Table.Td>
+                    {r.degraded ? (
+                      <Badge size="xs" color="yellow">
+                        Degraded
+                      </Badge>
+                    ) : (
+                      <Badge size="xs" color={r.grounded ? "green" : "gray"}>
+                        {r.grounded ? "Grounded" : "Numeric-only"}
+                      </Badge>
+                    )}
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      </Stack>
+    </Card>
+  );
+}
 
 const FAVORABLE = "favorable";
 const ADVERSE = "adverse";
@@ -41,12 +151,14 @@ function columnsFromProposal(p: SchemaInferenceProposal): string[] {
 
 export function AgentNewPage() {
   const nav = useNavigate();
+  const qc = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [demoKey, setDemoKey] = useState<string | null>(null);
   const [columns, setColumns] = useState<string[]>([]);
   const [proposal, setProposal] = useState<SchemaInferenceProposal | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [running, setRunning] = useState(false);
+  const runStageMessage = useRunStageMessage(running);
 
   const demos = useQuery({ queryKey: ["demo-datasets"], queryFn: () => api.demoDatasets() });
 
@@ -86,6 +198,7 @@ export function AgentNewPage() {
         ? await api.runDemoAudit(demoKey, proposal)
         : await api.runAudit(file as File, proposal);
       notifications.show({ color: "green", message: "Audit complete." });
+      await qc.invalidateQueries({ queryKey: ["agent-records"] });
       nav(`/agent/records/${result.record_id}`);
     } catch (e) {
       notifications.show({ color: "red", message: (e as Error).message });
@@ -102,6 +215,8 @@ export function AgentNewPage() {
   return (
     <Stack maw={640}>
       <Title order={3}>Agent audit</Title>
+
+      <RecentAuditsCard />
 
       <Card withBorder>
         <Stack>
@@ -239,6 +354,11 @@ export function AgentNewPage() {
             <Button loading={running} onClick={confirmAndRun}>
               Confirm &amp; run audit
             </Button>
+            {running && (
+              <Text size="xs" c="dimmed" ta="center">
+                {runStageMessage}
+              </Text>
+            )}
           </Stack>
         </Card>
       )}

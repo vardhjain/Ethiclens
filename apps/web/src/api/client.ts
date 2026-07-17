@@ -4,6 +4,7 @@
 import { notifications } from "@mantine/notifications";
 
 const TOKEN_KEY = "ethiclens_token";
+const ROLE_KEY = "ethiclens_role";
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -13,6 +14,40 @@ export function setToken(token: string): void {
 }
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
+}
+
+export function getRole(): Role | null {
+  return (localStorage.getItem(ROLE_KEY) as Role | null) ?? null;
+}
+export function setRole(role: Role): void {
+  localStorage.setItem(ROLE_KEY, role);
+}
+export function clearRole(): void {
+  localStorage.removeItem(ROLE_KEY);
+}
+
+interface FastApiValidationError {
+  loc?: (string | number)[];
+  msg?: string;
+}
+
+// FastAPI's error body shape depends on the failure: most raised HTTPExceptions send
+// `detail` as a plain string, but a 422 request-validation failure sends an *array* of
+// {loc, msg} objects — `detail.detail` alone renders that as "[object Object]" in a
+// toast instead of the actual field-level message.
+function formatErrorDetail(detail: unknown, status: number): string {
+  if (typeof detail === "string" && detail) return detail;
+  if (Array.isArray(detail)) {
+    const messages = (detail as FastApiValidationError[])
+      .map((item) => {
+        const field = item.loc?.[item.loc.length - 1];
+        if (field != null && item.msg) return `${field}: ${item.msg}`;
+        return item.msg;
+      })
+      .filter((m): m is string => Boolean(m));
+    if (messages.length > 0) return messages.join("; ");
+  }
+  return `Request failed (${status})`;
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -28,14 +63,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     // bounce to login instead of leaving every query/mutation on this page stuck on
     // a "Could not validate credentials" error that Retry can never resolve.
     clearToken();
+    clearRole();
     if (!window.location.pathname.startsWith("/login")) {
       notifications.show({ color: "yellow", message: "Your session expired — please sign in again." });
       window.location.assign("/login");
     }
   }
   if (!res.ok) {
-    const detail = await res.json().catch(() => ({}));
-    throw new Error(detail.detail ?? `Request failed (${res.status})`);
+    const body = await res.json().catch(() => ({}));
+    throw new Error(formatErrorDetail(body.detail, res.status));
   }
   return (await res.json()) as T;
 }
@@ -188,6 +224,15 @@ export interface AgentRunResult {
 export interface AgentRecord extends AgentRunResult {
   created_at: string;
 }
+export interface AgentRecordSummary {
+  record_id: string;
+  created_at: string;
+  outcome_column: string;
+  composite_score: number | null;
+  composite_band: string | null;
+  grounded: boolean;
+  degraded: boolean;
+}
 export interface AskResponse {
   answer: string;
   grounded: boolean;
@@ -238,6 +283,7 @@ export const api = {
     return request<AgentRunResult>("/agent/run-audit", { method: "POST", body });
   },
   getAgentRecord: (id: string) => request<AgentRecord>(`/agent/records/${id}`),
+  listAgentRecords: () => request<AgentRecordSummary[]>("/agent/records"),
   askAgentRecord: (id: string, question: string) =>
     request<AskResponse>(`/agent/records/${id}/ask`, {
       method: "POST",
