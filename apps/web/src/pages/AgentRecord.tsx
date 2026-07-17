@@ -272,40 +272,46 @@ export function AgentRecordPage() {
       </Card>
 
       <Card withBorder>
-        <Table>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Group</Table.Th>
-              <Table.Th>n (priv/unpriv)</Table.Th>
-              <Table.Th>Disparate Impact</Table.Th>
-              <Table.Th>Statistical Parity Diff.</Table.Th>
-              <Table.Th>Equalized Odds</Table.Th>
-              <Table.Th>Flagged</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {sc.groups.map((g, i) => (
-              <Table.Tr key={i}>
-                <Table.Td>{g.group_label}</Table.Td>
-                <Table.Td>
-                  {g.n_privileged} / {g.n_unprivileged}
-                </Table.Td>
-                <Table.Td>
-                  <MetricCell metric={g.metrics["disparate_impact"]} />
-                </Table.Td>
-                <Table.Td>
-                  <MetricCell metric={g.metrics["spd"]} />
-                </Table.Td>
-                <Table.Td>
-                  <MetricCell metric={g.metrics["equalized_odds"]} />
-                </Table.Td>
-                <Table.Td>
-                  {g.flagged ? <Badge color="red">Flagged</Badge> : <Badge color="green">OK</Badge>}
-                </Table.Td>
+        <Table.ScrollContainer minWidth={650}>
+          <Table>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Group</Table.Th>
+                <Table.Th>n (priv/unpriv)</Table.Th>
+                <Table.Th>Disparate Impact</Table.Th>
+                <Table.Th>Statistical Parity Diff.</Table.Th>
+                <Table.Th>Equalized Odds</Table.Th>
+                <Table.Th>Flagged</Table.Th>
               </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {sc.groups.map((g, i) => (
+                <Table.Tr key={i}>
+                  <Table.Td>{g.group_label}</Table.Td>
+                  <Table.Td>
+                    {g.n_privileged} / {g.n_unprivileged}
+                  </Table.Td>
+                  <Table.Td>
+                    <MetricCell metric={g.metrics["disparate_impact"]} />
+                  </Table.Td>
+                  <Table.Td>
+                    <MetricCell metric={g.metrics["spd"]} />
+                  </Table.Td>
+                  <Table.Td>
+                    <MetricCell metric={g.metrics["equalized_odds"]} />
+                  </Table.Td>
+                  <Table.Td>
+                    {g.flagged ? (
+                      <Badge color="red">Flagged</Badge>
+                    ) : (
+                      <Badge color="green">OK</Badge>
+                    )}
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       </Card>
 
       <MitigationCard measured={sc.measured_mitigation} groupEntries={groupEntries} />

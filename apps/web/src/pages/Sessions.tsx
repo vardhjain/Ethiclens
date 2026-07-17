@@ -40,33 +40,35 @@ export function SessionsPage() {
         </Card>
       )}
       {sessions.length > 0 && (
-        <Table highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Name</Table.Th>
-              <Table.Th>Status</Table.Th>
-              <Table.Th>Composite</Table.Th>
-              <Table.Th>Worst DI</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {sessions.map((s: SessionOut) => (
-              <Table.Tr key={s.id}>
-                <Table.Td>
-                  <Link to={`/sessions/${s.id}`}>{s.name}</Link>
-                </Table.Td>
-                <Table.Td>
-                  <Group gap="xs">
-                    <Badge color={STATUS_COLOR[s.status] ?? "gray"}>{s.status}</Badge>
-                    {s.locked && <Badge color="blue" variant="outline">locked</Badge>}
-                  </Group>
-                </Table.Td>
-                <Table.Td>{s.composite_score?.toFixed(3) ?? "—"}</Table.Td>
-                <Table.Td>{s.min_di?.toFixed(3) ?? "—"}</Table.Td>
+        <Table.ScrollContainer minWidth={500}>
+          <Table highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Name</Table.Th>
+                <Table.Th>Status</Table.Th>
+                <Table.Th>Composite</Table.Th>
+                <Table.Th>Worst DI</Table.Th>
               </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {sessions.map((s: SessionOut) => (
+                <Table.Tr key={s.id}>
+                  <Table.Td>
+                    <Link to={`/sessions/${s.id}`}>{s.name}</Link>
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap="xs">
+                      <Badge color={STATUS_COLOR[s.status] ?? "gray"}>{s.status}</Badge>
+                      {s.locked && <Badge color="blue" variant="outline">locked</Badge>}
+                    </Group>
+                  </Table.Td>
+                  <Table.Td>{s.composite_score?.toFixed(3) ?? "—"}</Table.Td>
+                  <Table.Td>{s.min_di?.toFixed(3) ?? "—"}</Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
     </Stack>
   );

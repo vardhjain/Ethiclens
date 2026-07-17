@@ -147,30 +147,34 @@ export function SessionDetailPage() {
           </Card>
 
           <Card withBorder>
-            <Table>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Group</Table.Th>
-                  <Table.Th>Metric</Table.Th>
-                  <Table.Th>Value</Table.Th>
-                  <Table.Th>95% CI</Table.Th>
-                  <Table.Th>Status</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {metrics.data.metrics.map((m, i) => (
-                  <Table.Tr key={i}>
-                    <Table.Td>{m.group_label}</Table.Td>
-                    <Table.Td>{m.metric_type}</Table.Td>
-                    <Table.Td>{m.value?.toFixed(3) ?? "N/A"}</Table.Td>
-                    <Table.Td>
-                      {m.ci_low != null ? `[${m.ci_low.toFixed(2)}, ${m.ci_high?.toFixed(2)}]` : "—"}
-                    </Table.Td>
-                    <Table.Td>{m.classification ?? "—"}</Table.Td>
+            <Table.ScrollContainer minWidth={500}>
+              <Table>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Group</Table.Th>
+                    <Table.Th>Metric</Table.Th>
+                    <Table.Th>Value</Table.Th>
+                    <Table.Th>95% CI</Table.Th>
+                    <Table.Th>Status</Table.Th>
                   </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
+                </Table.Thead>
+                <Table.Tbody>
+                  {metrics.data.metrics.map((m, i) => (
+                    <Table.Tr key={i}>
+                      <Table.Td>{m.group_label}</Table.Td>
+                      <Table.Td>{m.metric_type}</Table.Td>
+                      <Table.Td>{m.value?.toFixed(3) ?? "N/A"}</Table.Td>
+                      <Table.Td>
+                        {m.ci_low != null
+                          ? `[${m.ci_low.toFixed(2)}, ${m.ci_high?.toFixed(2)}]`
+                          : "—"}
+                      </Table.Td>
+                      <Table.Td>{m.classification ?? "—"}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
           </Card>
         </>
       )}
