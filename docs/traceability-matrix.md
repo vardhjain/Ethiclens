@@ -14,7 +14,7 @@ tests that satisfy it. Status legend: ✅ done · 🟡 in progress · ⬜ planne
 | FR-005 | Ranked mitigations where DI<0.8 | `fairness_core.mitigation.recommender` | `TS-INT-002`, `TS-FUNC-004` | 🟡 Phase 3 |
 | FR-006 | Explanation + estimated impact | `mitigation.recommender` | `TS-FUNC-004` | 🟡 Phase 3 |
 | FR-007 | Fairness Scorecard PDF | `services/api/.../build_pdf_task` (ReportLab) | `TS-FUNC-003` | ⬜ Phase 6 |
-| FR-008 | Escalation workflow | `POST /api/sessions/{id}/escalate` | `TS-UAT-001` | ⬜ Phase 5 |
+| FR-008 | Escalation workflow | descoped — sign-off (FR-010) is the governance gate | `TS-UAT-001` | ⬜ descoped |
 | FR-009 | Re-audit after mitigation | `parent_session_id` lineage + `/mitigate` | `TS-UAT-002` | 🟡 Phase 3/4 |
 | FR-010 | Governance sign-off portal | `POST /api/sessions/{id}/sign-off` (RBAC) | `TS-UAT-003` | ⬜ Phase 5 |
 | FR-011 | Lock + clearance notification | server-enforced lock + notification | `TS-UAT-003` | ⬜ Phase 5 |
@@ -24,7 +24,7 @@ tests that satisfy it. Status legend: ✅ done · 🟡 in progress · ⬜ planne
 | Req | Description | Approach | Test | Status |
 |---|---|---|---|---|
 | NFR-PERF-001 | ≤90s audit for ≤500MB model | arq async + batched ONNX inference | `TS-PERF-001` | ⬜ Phase 8 |
-| NFR-PERF-002 | ≥50 concurrent, <20% degradation | arq queue + DB pool; Locust evidence | `TS-PERF-002` | ⬜ Phase 8 |
+| NFR-PERF-002 | ≥50 concurrent, <20% degradation | arq queue + DB pool | `TS-PERF-002` | ⬜ Phase 8 |
 | NFR-PERF-003 | PDF ≤15s for 10 attributes | async report job, precomputed metrics | `TS-PERF-003` | ⬜ Phase 6/8 |
 | NFR-DB-001 | Persist results ≤5s | worker writes in completion handler | `TS-INT-003` step 5 | ⬜ Phase 4 |
 

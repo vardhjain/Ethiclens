@@ -78,8 +78,6 @@ async def test_full_pipeline(client: AsyncClient, auth) -> None:
     assert "race:Black" in recs.json()["recommendations"]
 
     # Fairness Scorecard PDF (FR-007).
-    req = await client.post(f"/api/sessions/{session_id}/report", headers=headers)
-    assert req.status_code == 202
     pdf = await client.get(f"/api/sessions/{session_id}/report", headers=headers)
     assert pdf.status_code == 200
     assert pdf.headers["content-type"] == "application/pdf"

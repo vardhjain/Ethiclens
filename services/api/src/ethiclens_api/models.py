@@ -50,7 +50,6 @@ class SessionStatus(StrEnum):
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     FLAGGED = "FLAGGED"
-    ESCALATED = "ESCALATED"
     SIGNED_OFF = "SIGNED_OFF"
 
 

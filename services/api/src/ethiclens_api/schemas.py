@@ -87,7 +87,6 @@ class SessionOut(BaseModel):
 class SessionStatusOut(BaseModel):
     status: str
     progress: float
-    eta_seconds: float | None = None
     error: str | None = None
 
 

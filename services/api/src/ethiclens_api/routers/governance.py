@@ -1,4 +1,4 @@
-"""Governance workflow (FR-008/010/011): escalation, sign-off, immutable lock."""
+"""Governance workflow (FR-010/011): sign-off with an immutable lock."""
 
 from __future__ import annotations
 
@@ -12,33 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ethiclens_api.db import get_session
 from ethiclens_api.models import AuditSession, SessionStatus, UserAccount, UserRole
 from ethiclens_api.schemas import SessionOut, SignOffRequest
-from ethiclens_api.security import get_current_user, require_role
+from ethiclens_api.security import require_role
 
 router = APIRouter(prefix="/api/sessions", tags=["governance"])
 _log = logging.getLogger("ethiclens.governance")
-
-
-async def _owned(session_id: UUID, user: UserAccount, db: AsyncSession) -> AuditSession:
-    obj = await db.get(AuditSession, session_id)
-    if obj is None or (obj.owner_id != user.id and user.role != UserRole.ADMIN):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
-    return obj
-
-
-@router.post("/{session_id}/escalate", response_model=SessionOut)
-async def escalate(
-    session_id: UUID,
-    db: AsyncSession = Depends(get_session),
-    user: UserAccount = Depends(get_current_user),
-) -> AuditSession:
-    obj = await _owned(session_id, user, db)
-    if obj.locked:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Session is locked")
-    obj.status = SessionStatus.ESCALATED
-    await db.commit()
-    await db.refresh(obj)
-    _log.info("Session %s escalated to engineering by %s", session_id, user.email)
-    return obj
 
 
 @router.post("/{session_id}/sign-off", response_model=SessionOut)

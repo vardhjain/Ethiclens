@@ -68,16 +68,6 @@ async def _reconstruct(session_id: UUID, obj: AuditSession, db: AsyncSession) ->
     )
 
 
-@router.post("/{session_id}/report", status_code=status.HTTP_202_ACCEPTED)
-async def request_report(
-    session_id: UUID,
-    db: AsyncSession = Depends(get_session),
-    user: UserAccount = Depends(get_current_user),
-) -> dict:
-    await _owned(session_id, user, db)
-    return {"report_job_id": str(session_id), "status": "ready"}
-
-
 @router.get("/{session_id}/report")
 async def download_report(
     session_id: UUID,

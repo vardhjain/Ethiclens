@@ -39,7 +39,6 @@ _PROGRESS = {
     SessionStatus.COMPLETED: 1.0,
     SessionStatus.FLAGGED: 1.0,
     SessionStatus.FAILED: 1.0,
-    SessionStatus.ESCALATED: 1.0,
     SessionStatus.SIGNED_OFF: 1.0,
 }
 
