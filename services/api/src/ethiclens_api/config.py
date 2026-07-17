@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
     algorithm: str = "HS256"
 
+    # Root log level. Nothing configures Python logging otherwise — every module-level
+    # logger (ethiclens.agent, ethiclens.agent.quota, ...) would sit at the default
+    # WARNING level with no handler, silently dropping every .info() call.
+    log_level: str = "INFO"
+
     # SQLite by default so the service runs (and tests) with zero infrastructure;
     # set DATABASE_URL to a postgresql+asyncpg URL in production.
     database_url: str = "sqlite+aiosqlite:///./ethiclens.db"
