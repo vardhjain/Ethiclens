@@ -1,13 +1,42 @@
-import { AppShell, Badge, Burger, Button, Group, Paper, Stack, Title } from "@mantine/core";
+import {
+  AppShell,
+  Badge,
+  Burger,
+  Button,
+  Center,
+  Group,
+  Loader,
+  Paper,
+  Stack,
+  Title,
+} from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
+import { lazy, Suspense } from "react";
 import { Navigate, Link, Route, Routes, useNavigate } from "react-router-dom";
 import { useAuth } from "./auth";
 import { AgentNewPage } from "./pages/AgentNew";
-import { AgentRecordPage } from "./pages/AgentRecord";
 import { LoginPage } from "./pages/Login";
 import { NewAuditPage } from "./pages/NewAudit";
-import { SessionDetailPage } from "./pages/SessionDetail";
 import { SessionsPage } from "./pages/Sessions";
+
+// These two pages pull in recharts, which is heavy enough to noticeably bloat the
+// main bundle. Split them into their own chunks, loaded only when visited.
+const AgentRecordPage = lazy(() =>
+  import("./pages/AgentRecord").then((m) => ({ default: m.AgentRecordPage })),
+);
+const SessionDetailPage = lazy(() =>
+  import("./pages/SessionDetail").then((m) => ({
+    default: m.SessionDetailPage,
+  })),
+);
+
+function PageFallback() {
+  return (
+    <Center py="xl">
+      <Loader />
+    </Center>
+  );
+}
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { logout, role } = useAuth();
@@ -24,7 +53,14 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   const navLinks = (
     <>
-      <Button variant="subtle" component={Link} to="/" onClick={close} justify="start" fullWidth>
+      <Button
+        variant="subtle"
+        component={Link}
+        to="/"
+        onClick={close}
+        justify="start"
+        fullWidth
+      >
         Sessions
       </Button>
       <Button
@@ -55,7 +91,12 @@ function Shell({ children }: { children: React.ReactNode }) {
       <AppShell.Header style={{ position: "relative" }}>
         <Group h="100%" px="md" justify="space-between">
           <Group>
-            <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
+            <Burger
+              opened={opened}
+              onClick={toggle}
+              hiddenFrom="sm"
+              size="sm"
+            />
             <Title order={4}>⚖️ EthicLens</Title>
             <Group visibleFrom="sm">{navLinks}</Group>
           </Group>
@@ -83,7 +124,13 @@ function Shell({ children }: { children: React.ReactNode }) {
             withBorder
             shadow="md"
             p="sm"
-            style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 199 }}
+            style={{
+              position: "absolute",
+              top: "100%",
+              left: 0,
+              right: 0,
+              zIndex: 199,
+            }}
           >
             <Stack gap={4}>{navLinks}</Stack>
           </Paper>
@@ -109,9 +156,23 @@ export function App() {
       <Routes>
         <Route path="/" element={<SessionsPage />} />
         <Route path="/new" element={<NewAuditPage />} />
-        <Route path="/sessions/:id" element={<SessionDetailPage />} />
+        <Route
+          path="/sessions/:id"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <SessionDetailPage />
+            </Suspense>
+          }
+        />
         <Route path="/agent/new" element={<AgentNewPage />} />
-        <Route path="/agent/records/:id" element={<AgentRecordPage />} />
+        <Route
+          path="/agent/records/:id"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <AgentRecordPage />
+            </Suspense>
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Shell>
