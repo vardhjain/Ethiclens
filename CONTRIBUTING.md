@@ -20,6 +20,14 @@ make cov         # pytest with the 85% coverage gate
 make audit-golden  # the golden Disparate Impact must stay in band
 ```
 
+For the web app (`apps/web`):
+
+```bash
+cd apps/web
+npm install
+npm run lint && npm run typecheck && npm test && npm run build
+```
+
 CI runs the same checks on Python 3.11 and 3.12, plus the golden-audit regression gate and
 CodeQL/pip-audit security scans.
 
@@ -32,5 +40,8 @@ CodeQL/pip-audit security scans.
 - **Conventional Commits** for messages (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`).
 - Keep `fairness-core` free of web/database dependencies.
 - Update `LIMITATIONS.md` if a change alters what the system can or cannot prove.
+
+Please also read the [Code of Conduct](CODE_OF_CONDUCT.md); report security issues privately as
+described in [SECURITY.md](SECURITY.md).
 
 By contributing you agree your work is licensed under the project's [MIT License](LICENSE).

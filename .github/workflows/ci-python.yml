@@ -6,7 +6,7 @@ on:
   pull_request:
 
 # Actions are referenced by major tag here for readability; production hardening
-# pins each to a full commit SHA (see docs/adr/0005-pin-ci-actions.md).
+# pins each to a full commit SHA (see docs/adr/0003-pin-ci-actions.md).
 permissions:
   contents: read
 

@@ -1,4 +1,4 @@
-# ADR 0005 — Pin third-party GitHub Actions to commit SHAs
+# ADR 0003 — Pin third-party GitHub Actions to commit SHAs
 
 - **Status:** Accepted
 - **Date:** 2026-05

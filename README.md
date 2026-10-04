@@ -4,9 +4,10 @@
 
 ### An AI Bias Detection & Mitigation Workbench for regulated decision models
 
-Unifies fairness **detection**, prescriptive **mitigation**, and formal **governance sign-off**
-in one tool — for compliance officers as well as ML engineers. Built for EU AI Act / EEOC
-audit requirements.
+Checks whether an automated decision system — for hiring, lending or risk scoring — treats
+groups of people unfairly, shows how to fix it, and records who signed off on the result.
+Designed for compliance officers as well as ML engineers, with EU AI Act and EEOC audit
+requirements in mind.
 
 **[▶ Try the hosted agent](https://ethiclens-dun.vercel.app)** &nbsp;·&nbsp;
 **[▶ Try the Gradio demo](https://huggingface.co/spaces/vardhjain20/Ethiclens)** &nbsp;·&nbsp;
@@ -17,7 +18,7 @@ audit requirements.
 [![ci-python](https://github.com/vardhjain/Ethiclens/actions/workflows/ci-python.yml/badge.svg)](https://github.com/vardhjain/Ethiclens/actions/workflows/ci-python.yml)
 [![golden-audit](https://github.com/vardhjain/Ethiclens/actions/workflows/golden-audit.yml/badge.svg)](https://github.com/vardhjain/Ethiclens/actions/workflows/golden-audit.yml)
 [![security](https://github.com/vardhjain/Ethiclens/actions/workflows/security.yml/badge.svg)](https://github.com/vardhjain/Ethiclens/actions/workflows/security.yml)
-[![coverage](https://img.shields.io/badge/coverage-96%25-2ea44f)](.github/workflows/ci-python.yml)
+[![engine coverage](https://img.shields.io/badge/engine%20coverage-96%25-2ea44f)](.github/workflows/ci-python.yml)
 [![python](https://img.shields.io/badge/python-3.11%20|%203.12-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![code style: ruff](https://img.shields.io/badge/style-ruff-261230)](https://github.com/astral-sh/ruff)
@@ -29,6 +30,46 @@ audit requirements.
 > **not** prove. Honesty about epistemics is a feature, not an afterthought.
 
 ---
+
+## What it does, in plain English
+
+Companies increasingly let software decide who gets an interview, a loan, or a "high risk" label.
+If that software approves one group far less often than another, the company is exposed legally
+and people are harmed. EthicLens answers three questions about such a system:
+
+1. **Is it biased?** Give it a model, or just a spreadsheet of the model's past decisions. It
+   compares outcomes across groups (for example by race or sex) and flags any group that is
+   treated measurably worse — with a margin of error, so small samples don't cause false alarms.
+2. **How do we fix it?** It tries several fixes, measures each one on data the fix has never
+   seen, and ranks them by how much fairness improves and how much accuracy it costs.
+3. **Who approved it?** A reviewer signs off on the audit, which then locks, leaving a permanent
+   record alongside a PDF report.
+
+There is also a **hosted assistant**: upload a CSV and, about a minute later, read a
+plain-English report and ask follow-up questions about it.
+
+## Try it
+
+| | |
+|---|---|
+| 🤖 **[Hosted agent](https://ethiclens-dun.vercel.app)** | Upload a CSV or pick a built-in dataset; get a narrated audit and a Q&A chat. No install. |
+| ▶ **[Gradio demo](https://huggingface.co/spaces/vardhjain20/Ethiclens)** | Audit a deliberately biased model and apply a fix, in the browser. |
+| 📖 **[Documentation](https://vardhjain.github.io/Ethiclens/)** | Method, design decisions, and limitations. |
+| 🧾 **Sample outputs** | [Scorecard PDF](docs/sample-scorecard.pdf) · [Model Card](docs/sample-model-card.md) · [Datasheet](docs/sample-datasheet.md) |
+
+The hosted demo runs on free tiers, so the first request after a quiet period can take a few
+seconds to wake up.
+
+## Key terms
+
+| Term | Meaning |
+|---|---|
+| **Protected attribute** | A characteristic the law protects, such as race, sex or age. |
+| **Disparate Impact (DI)** | One group's approval rate divided by the most-favoured group's. 1.0 means equal treatment. |
+| **Four-fifths (0.80) rule** | A US employment guideline: a DI below 0.80 is treated as evidence of adverse impact. |
+| **Equalized Odds** | Whether the model makes *mistakes* at the same rate for every group, not just approvals. |
+| **Confidence interval (CI)** | The margin of error around a number. EthicLens flags a group only when the whole interval is below 0.80. |
+| **Mitigation** | A change to the model or its decision thresholds that reduces the measured bias. |
 
 ## Why this exists
 
@@ -44,23 +85,84 @@ reputational exposure when those models discriminate. Existing tools force a tra
 EthicLens closes the loop from *"this model is biased"* to *"here is a measured fix and a
 signed, immutable audit record."*
 
-## What makes it credible (the three things to look at)
+## What makes it trustworthy
 
-1. **Verifiable numeric correctness.** Every fairness metric is implemented **from scratch** and
-   **cross-validated against [Fairlearn](https://fairlearn.org/) to a 1e-9 tolerance**, with
-   [Hypothesis](https://hypothesis.readthedocs.io/) property tests. A **golden-reference model**
-   with an empirically-pinned Disparate Impact (≈ 0.55) is **asserted in CI** — if the bias math
-   ever drifts, the build goes red. *Almost no portfolio repo can prove its math is correct.*
-2. **Real, measured mitigation — never faked.** A held-out **accuracy-vs-fairness Pareto frontier**
-   (with bootstrap CI error bars) feeds a ranked recommender; the reported improvement is a
-   *measured* delta on data the mitigation never touched, and the re-audit actually crosses the
-   0.80 threshold.
-3. **Security & responsible-AI maturity.** Uploaded models are deserialised in a **sandbox** (the
-   original spec's `pickle.load` of untrusted files is a remote-code-execution hole — fixed here),
-   metrics ship with **bootstrap confidence intervals** and minimum-subgroup floors, and every
-   audit emits a **Model Card** + **Datasheet** + an honesty banner.
+1. **The maths is checked, not assumed.** Every fairness metric is written from scratch and then
+   compared against [Fairlearn](https://fairlearn.org/), an established open-source library — the
+   results must agree to nine decimal places. A reference model with a known level of bias
+   (Disparate Impact ≈ 0.55) is re-audited on every code change; if the number drifts, the build
+   fails. [Hypothesis](https://hypothesis.readthedocs.io/) property tests cover the edge cases.
+2. **Fixes are measured, never estimated.** Each mitigation is evaluated on held-out data it has
+   not seen, with error bars, and the reported improvement is the measured before/after
+   difference. If something cannot be computed — for example an error-rate metric with no true
+   outcomes — EthicLens says `INSUFFICIENT_DATA` rather than inventing a value.
+3. **Built with security and honesty in mind.** Uploaded model files are opened in an isolated
+   sandbox, because loading an untrusted model file can run arbitrary code. Every audit ships
+   with a Model Card, a Datasheet and a plain statement of
+   [what the tool does *not* prove](LIMITATIONS.md).
 
-## 🤖 Hosted agent
+## ▶ Quickstart
+
+Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/); the full stack also needs Docker.
+
+```bash
+# 1. The engine, proven correct, in 30 seconds (no Docker needed)
+uv venv && uv pip install -e "packages/fairness-core[validation,viz,cli]"
+uv run ethiclens-audit demo          # trains a biased model, audits it, prints a scorecard
+make audit-golden                    # reproduces the CI-pinned golden DI ≈ 0.55
+
+# 2. The full stack (API + Postgres + React)
+cp .env.example .env
+docker compose up --build            # → web http://localhost:5173 · api http://localhost:8000/docs
+```
+
+## Example: the scorecard the CLI prints
+
+```
+==============================================================================
+                         EthicLens Fairness Scorecard
+==============================================================================
+Composite Bias Score: 0.612  [Medium Risk]   (higher = fairer)
+Worst-group Disparate Impact: 0.55   Labels available: yes
+------------------------------------------------------------------------------
+Group                      DI          95% CI     SPD      EO    Flag
+------------------------------------------------------------------------------
+race:Black              0.553   [0.51,0.60]  -0.282   0.141    FLAG
+race:Hispanic           0.910   [0.86,0.96]  -0.058   0.044      ok
+race:Asian              1.020   [0.97,1.07]   0.014   0.031      ok
+==============================================================================
+[!] 1 flagged group(s): race:Black
+    A group is flagged only when its DI confidence interval is below 0.80.
+==============================================================================
+```
+
+`ethiclens-audit mitigate` then ranks fixes and applies the top one, re-auditing on held-out
+data — e.g. ThresholdOptimizer drives **race:Black DI 0.36 → 0.91 (crosses 0.80)** for ~1% accuracy.
+
+**How to read it:** each row is one group compared with the most-favoured group. `DI` is the
+Disparate Impact, `95% CI` its margin of error, and `FLAG` appears only when the whole interval
+sits below 0.80 — here, Black applicants are approved at roughly 55% of the top group's rate.
+
+## Auditing real benchmarks — why one metric isn't enough
+
+The same engine audits any classifier on real labelled benchmarks
+(`python -m ml.cli.audit_dataset compas`). Running it on two famous datasets shows why a serious
+audit needs **both** selection-rate *and* error-rate metrics:
+
+| Dataset | Outcome | Most-affected group | DI | Equalized Odds | Flagged by |
+|---|---|---|---:|---:|---|
+| **COMPAS** — recidivism (*adverse*) | "will reoffend" | race: African-American | 2.50 | **0.34** | **Equalized Odds** |
+| **Adult** — income (*favorable*) | "earns > $50k" | sex: Female | **0.51** | 0.01 | **Disparate Impact** |
+
+On **COMPAS** the Disparate-Impact rule is *blind*: African-American defendants are flagged
+high-risk *more* often, which the 4/5ths under-selection rule ignores — but their **false-positive
+rate is ~2× higher (0.24 vs 0.11)**, the real [ProPublica finding](https://www.propublica.org/article/machine-bias-risk-assessments-in-criminal-sentencing),
+caught by **Equalized Odds**. On **Adult** it's the reverse — women are predicted to earn >$50k at
+half the rate of men, caught by **Disparate Impact**. EthicLens flags on *either*, so it covers
+both hiring/lending-style (favorable) and risk-scoring (adverse) decisions. See
+[methodology](docs/methodology.md#worked-example-compas).
+
+## 🤖 The hosted agent
 
 **[ethiclens-dun.vercel.app](https://ethiclens-dun.vercel.app)** — upload a predictions CSV (or
 pick one of three built-in demo datasets) and get a bias audit with confidence intervals, a
@@ -128,61 +230,6 @@ when HF began gating the Docker SDK behind a paid plan with no announcement. Clo
 just as well.
 </details>
 
-## ▶ Quickstart
-
-```bash
-# 1. The engine, proven correct, in 30 seconds (no Docker needed)
-uv venv && uv pip install -e "packages/fairness-core[validation,viz,cli]"
-uv run ethiclens-audit demo          # trains a biased model, audits it, prints a scorecard
-make audit-golden                    # reproduces the CI-pinned golden DI ≈ 0.55
-
-# 2. The full stack (API + Postgres + React)
-cp .env.example .env
-docker compose up --build            # → web http://localhost:5173 · api http://localhost:8000/docs
-```
-
-## Example: the scorecard the CLI prints
-
-```
-==============================================================================
-                         EthicLens Fairness Scorecard
-==============================================================================
-Composite Bias Score: 0.612  [Medium Risk]   (higher = fairer)
-Worst-group Disparate Impact: 0.55   Labels available: yes
-------------------------------------------------------------------------------
-Group                      DI          95% CI     SPD      EO    Flag
-------------------------------------------------------------------------------
-race:Black              0.553   [0.51,0.60]  -0.282   0.141    FLAG
-race:Hispanic           0.910   [0.86,0.96]  -0.058   0.044      ok
-race:Asian              1.020   [0.97,1.07]   0.014   0.031      ok
-==============================================================================
-[!] 1 flagged group(s): race:Black
-    A group is flagged only when its DI confidence interval is below 0.80.
-==============================================================================
-```
-
-`ethiclens-audit mitigate` then ranks fixes and applies the top one, re-auditing on held-out
-data — e.g. ThresholdOptimizer drives **race:Black DI 0.36 → 0.91 (crosses 0.80)** for ~1% accuracy.
-
-## Auditing real benchmarks — why one metric isn't enough
-
-The same engine audits any classifier on real labelled benchmarks
-(`python -m ml.cli.audit_dataset compas`). Running it on two famous datasets shows why a serious
-audit needs **both** selection-rate *and* error-rate metrics:
-
-| Dataset | Outcome | Most-affected group | DI | Equalized Odds | Flagged by |
-|---|---|---|---:|---:|---|
-| **COMPAS** — recidivism (*adverse*) | "will reoffend" | race: African-American | 2.50 | **0.34** | **Equalized Odds** |
-| **Adult** — income (*favorable*) | "earns > $50k" | sex: Female | **0.51** | 0.01 | **Disparate Impact** |
-
-On **COMPAS** the Disparate-Impact rule is *blind*: African-American defendants are flagged
-high-risk *more* often, which the 4/5ths under-selection rule ignores — but their **false-positive
-rate is ~2× higher (0.24 vs 0.11)**, the real [ProPublica finding](https://www.propublica.org/article/machine-bias-risk-assessments-in-criminal-sentencing),
-caught by **Equalized Odds**. On **Adult** it's the reverse — women are predicted to earn >$50k at
-half the rate of men, caught by **Disparate Impact**. EthicLens flags on *either*, so it covers
-both hiring/lending-style (favorable) and risk-scoring (adverse) decisions. See
-[methodology](docs/methodology.md#worked-example-compas).
-
 ## Architecture
 
 A three-tier system around one shared, audited fairness engine.
@@ -203,6 +250,20 @@ A three-tier system around one shared, audited fairness engine.
 The **same `fairness_core` code** powers the API workers, the CLI, and the notebooks, so the
 numbers can never diverge between "what the demo shows" and "what the service computes."
 
+## Tech stack and quality checks
+
+| Layer | Built with |
+|---|---|
+| Fairness engine | Python, NumPy, pandas, scikit-learn; validated against Fairlearn |
+| API | FastAPI, SQLAlchemy (async), Alembic, PostgreSQL (SQLite for local use) |
+| Web app | React, TypeScript, Vite, Mantine, TanStack Query |
+| Agent | Groq (Llama 3.3) with Gemini as fallback, behind a number-checking validator |
+| Hosting | Google Cloud Run, Supabase, Vercel |
+
+Every push runs: 195 Python tests and 17 web tests, Ruff linting and formatting, strict type
+checking on the engine, ESLint and TypeScript checks, the reference-model regression check, and
+security scans (CodeQL, `pip-audit`, `npm audit`).
+
 ## Repository layout
 
 | Path | What |
@@ -215,7 +276,7 @@ numbers can never diverge between "what the demo shows" and "what the service co
 | `docs/` | Methodology, ADRs, STP traceability matrix, per-persona guides |
 | `infra/` · `.github/` | Docker/compose · CI, golden-audit gate, security scans |
 
-## Live demo & notebook
+## Demos and notebook
 
 - 🤖 **[Hosted agent](https://ethiclens-dun.vercel.app)** — the full agentic flow described above:
   upload a CSV or pick a canned dataset (COMPAS, Adult Income, or a synthetic hiring screen), get a
@@ -237,6 +298,7 @@ numbers can never diverge between "what the demo shows" and "what the service co
   methodological fix over the original spec.
 - 🧾 [STP traceability matrix](docs/traceability-matrix.md) — every requirement → code + test.
 - 🏛️ [Architecture Decision Records](docs/adr/) — the choices and why.
+- 🔒 [Security policy](SECURITY.md) · 🤝 [Contributing](CONTRIBUTING.md) · 📝 [Changelog](CHANGELOG.md)
 - 🚀 [Deployment guide](DEPLOYMENT.md) — how the hosted agent gets to Cloud Run + Supabase + Vercel.
 - ⚠️ [Limitations](LIMITATIONS.md) — what this does **not** prove.
 

@@ -33,4 +33,4 @@ nav:
   - Architecture Decisions:
       - Composite weights: adr/0001-composite-weights.md
       - ONNX & sandbox: adr/0002-onnx-keystone-and-sandbox.md
-      - Pinning CI actions: adr/0005-pin-ci-actions.md
+      - Pinning CI actions: adr/0003-pin-ci-actions.md
