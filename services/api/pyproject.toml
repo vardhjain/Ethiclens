@@ -9,7 +9,7 @@ dependencies = [
     "fairness-core[reporting,validation]",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
-    "sqlalchemy>=2.0",
+    "sqlalchemy[asyncio]>=2.0",
     "alembic>=1.13",
     "asyncpg>=0.29",
     "aiosqlite>=0.20",
