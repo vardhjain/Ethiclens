@@ -14,6 +14,7 @@ A group is flagged only when its DI confidence interval lies entirely below
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -65,7 +66,7 @@ class AttributeSpec:
 
     name: str
     privileged_value: object | None = None
-    unprivileged_values: list[object] | None = None
+    unprivileged_values: Sequence[object] | None = None
 
 
 def predict_labels(

@@ -18,7 +18,7 @@ from pathlib import Path
 _DB_FILE = Path(tempfile.gettempdir()) / f"ethiclens_api_test_{os.getpid()}.db"
 os.environ.setdefault("DATABASE_URL", f"sqlite+aiosqlite:///{_DB_FILE.as_posix()}")
 os.environ.setdefault("EAGER_TASKS", "true")
-os.environ.setdefault("SECRET_KEY", "test-secret-key")
+os.environ.setdefault("SECRET_KEY", "test-secret-key-at-least-32-bytes-long")
 os.environ.setdefault("MODEL_STORAGE_DIR", str(Path(tempfile.gettempdir()) / "ethiclens_models"))
 
 import pytest  # noqa: E402

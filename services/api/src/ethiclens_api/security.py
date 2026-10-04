@@ -8,9 +8,9 @@ from typing import Any
 from uuid import UUID
 
 import bcrypt
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,13 +52,11 @@ async def get_current_user(
     )
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-        user_id = payload.get("sub")
-        if user_id is None:
-            raise credentials_error
-    except JWTError as exc:
+        user_id = UUID(payload["sub"])
+    except (jwt.PyJWTError, KeyError, TypeError, ValueError) as exc:
         raise credentials_error from exc
 
-    user = await session.get(UserAccount, UUID(user_id))
+    user = await session.get(UserAccount, user_id)
     if user is None:
         raise credentials_error
     return user

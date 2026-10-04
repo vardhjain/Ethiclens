@@ -44,13 +44,7 @@ jobs:
           # pip-audit can't resolve them against PyPI, and --strict turns that
           # unresolvability into a hard failure instead of the graceful skip it gets
           # without the flag. This still audits every real (PyPI-sourced) dependency.
-          #
-          # PYSEC-2026-1325: ecdsa's Minerva timing-attack CVE, pulled in transitively
-          # by python-jose[cryptography]'s ES*-algorithm support. This app only ever
-          # signs JWTs with HS256 (config.py) — ecdsa.SigningKey.sign_digest() is never
-          # called — and ecdsa's maintainers have no planned fix (side-channel attacks
-          # are out of scope for that project). Ignored deliberately, not silently.
-          pip-audit --ignore-vuln PYSEC-2026-1325
+          pip-audit
 
   npm-audit:
     name: npm audit (dependency CVEs)

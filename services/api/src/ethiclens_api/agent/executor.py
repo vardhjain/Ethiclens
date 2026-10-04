@@ -122,10 +122,12 @@ def measure_top_mitigation(
     """
     if plan.score_column is None or plan.true_label_column is None:
         return None
-    flagged = [g for g in result.flagged_groups if g.metric("disparate_impact") is not None]
+    flagged = [
+        (g, di) for g in result.flagged_groups if (di := g.metric("disparate_impact")) is not None
+    ]
     if not flagged:
         return None
-    group = min(flagged, key=lambda g: g.metric("disparate_impact").value or 1.0)
+    group = min(flagged, key=lambda pair: pair[1].value or 1.0)[0]
 
     working = data.copy()
     target_column = plan.true_label_column

@@ -10,7 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
 
-    secret_key: str = "dev-secret-change-me"
+    secret_key: str = "dev-secret-change-me-in-production-32b+"
     access_token_expire_minutes: int = 60
     algorithm: str = "HS256"
 

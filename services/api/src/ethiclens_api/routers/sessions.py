@@ -17,6 +17,7 @@ from ethiclens_api.models import (
     UserAccount,
 )
 from ethiclens_api.schemas import (
+    MetricOut,
     MetricsResponse,
     MitigateRequest,
     RecommendationOut,
@@ -99,6 +100,8 @@ async def run_session(
     # stale copy instead of the now-current status. populate_existing forces a
     # re-fetch.
     fresh = await db.get(AuditSession, session_id, populate_existing=True)
+    if fresh is None:  # deleted between enqueue and re-read
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
     return {"session_id": str(session_id), "status": fresh.status.value, "job_id": job_id}
 
 
@@ -135,7 +138,7 @@ async def session_metrics(
         composite_band=obj.composite_band,
         min_di=obj.min_di,
         has_labels=has_labels,
-        metrics=rows,
+        metrics=[MetricOut.model_validate(m) for m in rows],
     )
 
 

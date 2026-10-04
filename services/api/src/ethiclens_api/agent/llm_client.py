@@ -125,7 +125,7 @@ class GeminiClient:
     def __init__(
         self,
         api_key: str,
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-3.5-flash",
         timeout: float = _DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
         from google import genai
