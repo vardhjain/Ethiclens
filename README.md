@@ -17,7 +17,7 @@ requirements in mind.
 [![Live Demo](https://img.shields.io/badge/%F0%9F%A4%97-Live%20Demo-yellow)](https://huggingface.co/spaces/vardhjain20/Ethiclens)
 [![ci-python](https://github.com/vardhjain/Ethiclens/actions/workflows/ci-python.yml/badge.svg)](https://github.com/vardhjain/Ethiclens/actions/workflows/ci-python.yml)
 [![golden-audit](https://github.com/vardhjain/Ethiclens/actions/workflows/golden-audit.yml/badge.svg)](https://github.com/vardhjain/Ethiclens/actions/workflows/golden-audit.yml)
-[![security](https://github.com/vardhjain/Ethiclens/actions/workflows/security.yml/badge.svg)](https://github.com/vardhjain/Ethiclens/actions/workflows/security.yml)
+[![security](https://github.com/vardhjain/Ethiclens/actions/workflows/security-scans.yml/badge.svg)](https://github.com/vardhjain/Ethiclens/actions/workflows/security-scans.yml)
 [![engine coverage](https://img.shields.io/badge/engine%20coverage-96%25-2ea44f)](.github/workflows/ci-python.yml)
 [![python](https://img.shields.io/badge/python-3.11%20|%203.12-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
