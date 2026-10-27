@@ -242,7 +242,6 @@ def test_report_includes_cohort_evidence_reason_and_ci() -> None:
     assert "composite unavailable" in text
 
 
-
 def test_excluded_cohort_prevents_selective_aggregate_even_with_eligible_groups() -> None:
     from scripts.benchmark_agent import validate_coverage
 

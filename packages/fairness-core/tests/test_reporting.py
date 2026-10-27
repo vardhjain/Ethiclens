@@ -70,7 +70,6 @@ def test_datasheet_has_sections() -> None:
     assert "1,000 rows" in md
 
 
-
 def test_reports_suppress_underpowered_point_estimates() -> None:
     from fairness_core.reporting.scorecard import _fmt
     from fairness_core.types import Classification

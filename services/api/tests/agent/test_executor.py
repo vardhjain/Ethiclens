@@ -160,7 +160,6 @@ def test_measure_top_mitigation_none_without_flagged_groups():
     assert measure_top_mitigation(plan, data, direction, result) is None
 
 
-
 def test_excluded_small_cohort_blocks_all_group_headlines() -> None:
     """A flagged/valid comparison cannot conceal an excluded tiny third cohort."""
     from ethiclens_api.agent.audit_planner import plan_audit

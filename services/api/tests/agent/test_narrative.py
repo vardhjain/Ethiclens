@@ -155,7 +155,6 @@ def test_false_regulatory_clearance_degrades_to_numeric_fallback() -> None:
     assert "0.62" in result.output.narrative
 
 
-
 def test_numeric_fallback_does_not_print_none_as_a_fairness_statistic() -> None:
     from ethiclens_api.agent.narrative import unavailable_result
 
