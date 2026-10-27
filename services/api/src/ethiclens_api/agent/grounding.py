@@ -1,77 +1,185 @@
-"""Deterministic number-grounding validator, shared by Stage 4 (narrative) and Stage 5 (Q&A).
+"""Deterministic evidence checks for LLM audit explanations.
 
-Every numeric token an LLM writes about an audit must be traceable back to the source
-scorecard JSON, with tolerance for rounding and percentage-vs-fraction formatting. This
-is the guardrail that keeps the LLM from ever fabricating a metric.
+Numeric matching alone cannot establish truth. This module also rejects a
+bounded set of important categorical contradictions. It is not a general
+natural-language entailment verifier.
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import math
 import re
+from typing import Any
 
 _log = logging.getLogger("ethiclens.agent.grounding")
+_NUMBER_RE = re.compile(
+    r"(?<![\w.])[-+]?(?:\d{1,3}(?:,\d{3})+|\d+|\.\d+)"
+    r"(?:\.\d+)?(?:[eE][+-]?\d+)?%?(?!\w)"
+)
+_GROUP_RE = re.compile(r"\b[a-zA-Z][\w.-]*:[a-zA-Z][\w.-]*\b")
+_CLEARANCE_RE = re.compile(
+    r"\b(?:legally compliant|legally cleared|certified fair|regulatory clearance|"
+    r"approved for deployment|cleared for deployment|safe to deploy|guaranteed fair)\b",
+    re.IGNORECASE,
+)
+_NO_FLAG_RE = re.compile(
+    r"\b(?:no (?:groups? (?:were |are )?)?flagged|none (?:were |are )?flagged|"
+    r"no (?:bias|disparit(?:y|ies)|violations?) (?:was |were )?detected|"
+    r"(?:all|every) (?:audited )?groups? (?:passed|pass|meet|are fair))\b",
+    re.IGNORECASE,
+)
+_PASS_RE = re.compile(
+    r"\b(?:all (?:groups? |metrics )?(?:passed|meet)|"
+    r"the (?:audit|model) (?:passed|passes|is fair|is unbiased)|"
+    r"(?:fairness|compliance) (?:is )?(?:verified|confirmed))\b",
+    re.IGNORECASE,
+)
+_MEASURED_RE = re.compile(
+    r"\b(?:measured (?:mitigation|improvement|gain|impact)|"
+    r"held[- ]out (?:improvement|gain|results?|data)|"
+    r"(?:improvement|gain|impact) (?:was|is) measured)\b",
+    re.IGNORECASE,
+)
+_NOT_MEASURED_RE = re.compile(
+    r"\b(?:not|never|unavailable|no)\s+(?:actually )?measured\b", re.IGNORECASE
+)
+_EO_COMPUTED_RE = re.compile(
+    r"\b(?:equalized odds|EO)\s+(?:was|were|is|has been)?\s*"
+    r"(?:computed|calculated|measured|passed|acceptable)\b",
+    re.IGNORECASE,
+)
 
-#: Matches numbers, including percentages, negatives, and decimals (e.g. "55%", "-0.12", "1,234").
-_NUMBER_RE = re.compile(r"-?\d[\d,]*\.?\d*%?")
-
-
-def extract_source_numbers(json_text: str) -> set[str]:
-    """Every normalized numeric token appearing in serialized source JSON."""
-    return {_normalize(tok) for tok in _NUMBER_RE.findall(json_text)}
-
-
-def is_grounded(text: str, source_numbers: set[str]) -> bool:
-    """True if every numeric token in ``text`` is traceable to ``source_numbers``."""
-    for token in _NUMBER_RE.findall(text):
-        if not _close_to_any(_normalize(token), source_numbers):
-            _log.warning(
-                "Grounding failed: token %r not traceable to any of %d source numbers",
-                token,
-                len(source_numbers),
-            )
-            return False
-    return True
+_ABS_TOLERANCE = 0.005
+_PCT_TOLERANCE = 0.5
 
 
 def _normalize(token: str) -> str:
-    """Normalize a numeric token for tolerant comparison (drop '%', trailing zeros, commas)."""
+    """Normalize numerical tokens to the precision of displayed scorecards."""
     cleaned = token.replace(",", "").rstrip("%")
     try:
-        return f"{float(cleaned):.2f}"
+        value = float(cleaned)
+        return f"{value:.2f}" if math.isfinite(value) else cleaned
     except ValueError:
         return cleaned
 
 
-#: Both the claim and every source number are already independently rounded to 2
-#: decimals by _normalize() before this comparison runs, so this only needs to absorb
-#: residual rounding-boundary drift (e.g. a source of 0.5949999 normalizing to "0.59"
-#: while a slightly different intermediate computation rounds to "0.60"). It must stay
-#: well under 0.01: a full extra hundredth of slack would let a narrative claim "0.79"
-#: pass against a source value of "0.80" — a different four-fifths-threshold verdict,
-#: not a rounding difference.
-_ABS_TOLERANCE = 0.005
-_PCT_TOLERANCE = _ABS_TOLERANCE * 100
+def extract_source_numbers(json_text: str) -> set[str]:
+    """Use numeric JSON values, not digits embedded in keys or free-text fields."""
+    data = json.loads(json_text)
+    found: set[str] = set()
+
+    def visit(item: Any) -> None:
+        if isinstance(item, bool) or item is None:
+            return
+        if isinstance(item, (int, float)):
+            if math.isfinite(item):
+                found.add(_normalize(str(item)))
+        elif isinstance(item, str):
+            # Preserve genuinely numeric strings, including CSV-derived percentages.
+            if _NUMBER_RE.fullmatch(item.strip()):
+                found.add(_normalize(item.strip()))
+        elif isinstance(item, dict):
+            for value in item.values():
+                visit(value)
+        elif isinstance(item, list):
+            for value in item:
+                visit(value)
+
+    visit(data)
+    return found
 
 
-def _close_to_any(value: str, source_numbers: set[str]) -> bool:
+def _close_to_any(token: str, source_numbers: set[str]) -> bool:
     try:
-        target = float(value)
+        target = float(_normalize(token))
     except ValueError:
-        return value in source_numbers
+        return _normalize(token) in source_numbers
     for candidate in source_numbers:
         try:
-            candidate_value = float(candidate)
+            value = float(candidate)
         except ValueError:
             continue
-        if abs(candidate_value - target) <= _ABS_TOLERANCE:
+        if abs(value - target) <= _ABS_TOLERANCE:
             return True
-        # Percentage vs fraction, checked both ways: a claim of "55%" against a source
-        # fraction "0.55", or (symmetrically) a claim of "0.55" against a source
-        # expressed on a 0-100 scale.
+        # "55%" may restate a source rate of 0.55; "55 applicants" may not.
+        if token.endswith("%") and abs(value * 100 - target) <= _PCT_TOLERANCE:
+            return True
+        # Support a fraction from a source recorded on the 0-100 scale.
         if (
-            abs(candidate_value * 100 - target) <= _PCT_TOLERANCE
-            or abs(candidate_value - target * 100) <= _PCT_TOLERANCE
+            not token.endswith("%")
+            and 0 <= target <= 1
+            and abs(value - target * 100) <= _PCT_TOLERANCE
         ):
             return True
     return False
+
+
+def is_grounded(text: str, source_numbers: set[str]) -> bool:
+    """Check that numeric tokens are supported by numeric evidence."""
+    for token in _NUMBER_RE.findall(text):
+        if not _close_to_any(token, source_numbers):
+            _log.warning("Grounding rejected unsupported numeric claim: %s", token)
+            return False
+    return True
+
+
+def is_explanation_grounded(text: str, scorecard: dict) -> bool:
+    """Check numbers and high-impact contradictions; not a full semantics proof."""
+    evidence = extract_source_numbers(json.dumps(scorecard, default=str))
+    if not is_grounded(text, evidence):
+        return False
+    if _CLEARANCE_RE.search(text):
+        _log.warning("Grounding rejected a regulatory/deployment clearance claim")
+        return False
+
+    groups = scorecard.get("groups") or []
+    labels = {
+        group["group_label"]
+        for group in groups
+        if isinstance(group, dict) and isinstance(group.get("group_label"), str)
+    }
+    if any(label not in labels for label in _GROUP_RE.findall(text)):
+        _log.warning("Grounding rejected an unsupported group label")
+        return False
+
+    # Reject direct reversals of a named group's explicit flagged state.
+    for group in groups:
+        if not isinstance(group, dict) or not isinstance(group.get("group_label"), str):
+            continue
+        label = re.escape(group["group_label"])
+        if group.get("flagged") and re.search(
+            rf"{label}[^.!?]{{0,65}}\b(?:was|is|were) not flagged\b",
+            text,
+            re.IGNORECASE,
+        ):
+            _log.warning("Grounding rejected a reversed group flag")
+            return False
+        if not group.get("flagged") and re.search(
+            rf"{label}[^.!?]{{0,65}}\b(?:was|is|were) flagged\b",
+            text,
+            re.IGNORECASE,
+        ):
+            _log.warning("Grounding rejected a fabricated group flag")
+            return False
+
+    flagged = any(group.get("flagged") for group in groups if isinstance(group, dict))
+    if flagged and _NO_FLAG_RE.search(text):
+        _log.warning("Grounding rejected a contradictory no-flags claim")
+        return False
+    incomplete = scorecard.get("composite_score") is None or not groups
+    if incomplete and _PASS_RE.search(text):
+        _log.warning("Grounding rejected an unsupported positive verdict")
+        return False
+    if (
+        scorecard.get("measured_mitigation") is None
+        and _MEASURED_RE.search(text)
+        and not _NOT_MEASURED_RE.search(text)
+    ):
+        _log.warning("Grounding rejected an unmeasured mitigation claim")
+        return False
+    if scorecard.get("has_labels") is False and _EO_COMPUTED_RE.search(text):
+        _log.warning("Grounding rejected label-dependent metric claim")
+        return False
+    return True

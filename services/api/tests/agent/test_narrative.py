@@ -127,3 +127,29 @@ def test_build_scorecard_serializes_measured_mitigation():
     assert measured["di_improvement"] == 0.35
     assert measured["accuracy_cost"] == mitigation.accuracy_cost
     assert measured["crossed_threshold"] is True
+
+
+def test_semantic_contradiction_retries_and_recovers() -> None:
+    client = _StubClient(
+        [
+            _response("No groups were flagged.", "No mitigation."),
+            _response("race:Black was flagged with minimum DI 0.55.", "See recommendations."),
+        ]
+    )
+    result = generate_narrative(client, _SCORECARD)
+    assert result.grounded is True
+    assert result.degraded is False
+    assert "race:Black" in result.output.narrative
+
+
+def test_false_regulatory_clearance_degrades_to_numeric_fallback() -> None:
+    client = _StubClient(
+        [
+            _response("This model is legally compliant.", "See recommendations."),
+            _response("This model is safe to deploy.", "See recommendations."),
+        ]
+    )
+    result = generate_narrative(client, _SCORECARD)
+    assert result.grounded is False
+    assert result.degraded is True
+    assert "0.62" in result.output.narrative

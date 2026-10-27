@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from ethiclens_api.agent.grounding import extract_source_numbers, is_grounded
+from ethiclens_api.agent.grounding import (
+    extract_source_numbers,
+    is_explanation_grounded,
+    is_grounded,
+)
 
 
 def test_extract_source_numbers_normalizes_percent_and_commas():
@@ -51,3 +55,69 @@ def test_is_grounded_false_logs_the_offending_token(caplog):
     with caplog.at_level("WARNING", logger="ethiclens.agent.grounding"):
         assert not is_grounded("42% of applicants were affected.", {"0.55"})
     assert any("42%" in record.message for record in caplog.records)
+
+
+_AUDIT = {
+    "composite_score": None,
+    "has_labels": False,
+    "measured_mitigation": None,
+    "groups": [
+        {"group_label": "race:Black", "flagged": True, "metrics": {"di": {"value": 0.55}}},
+        {"group_label": "race:White", "flagged": False},
+    ],
+}
+
+
+def test_numeric_evidence_excludes_json_keys_and_free_text() -> None:
+    values = extract_source_numbers(
+        '{"method_v42": 0.55, "group": "race:group999", '
+        '"reason": "42% of customers", "stored_percent": "12%"}'
+    )
+    assert values == {"0.55", "12.00"}
+    assert not is_grounded("42% were affected.", values)
+
+
+def test_unmarked_count_does_not_match_fraction_via_percent_conversion() -> None:
+    assert not is_grounded("55 customers were affected.", {"0.55"})
+    assert is_grounded("55% received approval.", {"0.55"})
+
+
+def test_fabricated_group_label_is_rejected_without_numerical_claims() -> None:
+    assert not is_explanation_grounded("race:Asian was flagged.", _AUDIT)
+
+
+def test_no_flag_claim_is_rejected_if_any_group_flagged() -> None:
+    assert not is_explanation_grounded("No groups were flagged.", _AUDIT)
+    assert not is_explanation_grounded("All groups passed.", _AUDIT)
+
+
+def test_group_specific_reversed_or_fabricated_flag_is_rejected() -> None:
+    assert not is_explanation_grounded("race:Black was not flagged.", _AUDIT)
+    assert not is_explanation_grounded("race:White was flagged.", _AUDIT)
+
+
+def test_regulatory_clearance_and_fake_measured_mitigation_are_rejected() -> None:
+    assert not is_explanation_grounded("This model is legally compliant.", _AUDIT)
+    assert not is_explanation_grounded("Measured mitigation improvement was 0.55.", _AUDIT)
+    assert is_explanation_grounded("The mitigation was not measured.", _AUDIT)
+
+
+def test_unlabeled_eo_and_unsubstantiated_positive_verdict_are_rejected() -> None:
+    assert not is_explanation_grounded("Equalized Odds was computed.", _AUDIT)
+    assert not is_explanation_grounded("The audit passes.", _AUDIT)
+
+
+def test_grounded_group_and_factual_disparity_are_accepted() -> None:
+    assert is_explanation_grounded("race:Black was flagged; DI was 0.55.", _AUDIT)
+
+
+def test_explicit_numeric_group_names_remain_labels_not_evidence() -> None:
+    scorecard = {"groups": [{"group_label": "group42:cohort7", "flagged": False}]}
+    numbers = extract_source_numbers(__import__("json").dumps(scorecard))
+    assert numbers == set()
+
+
+def test_sentence_final_fabricated_number_is_not_ignored() -> None:
+    assert not is_grounded("The measured score is 0.91.", {"0.55"})
+    assert not is_grounded("There were 42.", {"0.55"})
+    assert is_grounded("The measured score is 0.55.", {"0.55"})

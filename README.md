@@ -197,7 +197,7 @@ flowchart TD
 | Guardrail | Enforced in |
 |---|---|
 | LLM never computes a metric or threshold | `agent/audit_planner.py`, `agent/executor.py` — no LLM import in either |
-| Every number the LLM writes is traceable to the scorecard | `agent/grounding.py`; regenerate once, then degrade to numeric-only |
+| Numeric claims are checked against numeric scorecard values; key categorical contradictions are rejected | `agent/grounding.py`; regenerate once, then degrade to numeric-only |
 | An audit never runs on an unconfirmed schema guess | two-endpoint split (`/propose-schema` → `/run-audit`) in `routers/agent.py` |
 | LLM cost has a hard daily ceiling, degrades gracefully | `agent/quota.py`, `usage_counter` table |
 | Uploaded data is never persisted, only the derived scorecard | `AgentAuditRecord` model; 5MB / 50,000-row upload caps |
@@ -314,3 +314,9 @@ audited models on synthetic personas, which cannot measure real disparate impact
 ## License
 
 [MIT](LICENSE) © 2026 Vardh Jain
+
+**Grounding limitation:** The validator checks numerical evidence and explicit
+contradictions (group flags/names, unsupported mitigation measurement, missing-label
+Equalized Odds and legal-clearance claims). It is **not** a general semantic
+entailment system. Failed checks trigger one regeneration and then a deterministic
+fallback. Human review remains necessary for consequential decisions.
