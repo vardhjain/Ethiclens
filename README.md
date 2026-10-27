@@ -163,6 +163,28 @@ half the rate of men, caught by **Disparate Impact**. EthicLens flags on *either
 both hiring/lending-style (favorable) and risk-scoring (adverse) decisions. See
 [methodology](docs/methodology.md#worked-example-compas).
 
+## Reproduce the agent's offline evidence
+
+Beyond the pinned synthetic golden-model test, [**agent-evidence CI**](https://github.com/vardhjain/Ethiclens/actions/workflows/agent-evidence.yml)
+runs all three bundled demonstration datasets through the **same deterministic
+planning, fairness calculation, mitigation, and scorecard code used by the API**.
+It produces a downloadable `evidence.json` (dataset SHA-256 fingerprints,
+availability/insufficiency flags, measured mitigation, and per-stage timings)
+and a short Markdown report. The benchmark independently recomputes group
+selection-rate ratios directly from each CSV to detect polarity mistakes.
+
+Reproduce it locally with Python 3.12 and `uv` (no network after installation):
+
+```bash
+uv pip install --system -e "packages/fairness-core[validation,viz,cli]" -e "services/api[test]"
+python -m scripts.benchmark_agent --repeats 2 --out-dir artifacts/agent-evidence
+```
+
+**Scope matters:** This verifies the offline fairness-agent path, **not** the LLM,
+hosted Q&A, network latency, production uptime, or a regulatory conclusion.
+CI timings are observational and should not be used as a cross-machine speed claim.
+Insufficient evidence is reported as unavailable rather than silently coerced to zero.
+
 ## 🤖 The hosted agent
 
 **[ethiclens-dun.vercel.app](https://ethiclens-dun.vercel.app)** — upload a predictions CSV (or
@@ -261,9 +283,9 @@ numbers can never diverge between "what the demo shows" and "what the service co
 | Agent | Groq (Llama 3.3) with Gemini as fallback, behind a number-checking validator |
 | Hosting | Google Cloud Run, Supabase, Vercel |
 
-Every push runs: 195 Python tests and 17 web tests, Ruff linting and formatting, strict type
-checking on the engine, ESLint and TypeScript checks, the reference-model regression check, and
-security scans (CodeQL, `pip-audit`, `npm audit`).
+CI covers Python 3.11/3.12 and the web suite, Ruff lint/format, strict engine typing,
+Fairlearn/golden-model regressions, security audits, and the offline agent-evidence benchmark.
+The benchmark uploads its actual outputs as downloadable CI artifacts.
 
 ## Repository layout
 
