@@ -141,6 +141,26 @@ def is_explanation_grounded(text: str, scorecard: dict) -> bool:
         _log.warning("Grounding rejected an unsupported group label")
         return False
 
+    # Reject direct reversals of a named group's explicit flagged state.
+    for group in groups:
+        if not isinstance(group, dict) or not isinstance(group.get("group_label"), str):
+            continue
+        label = re.escape(group["group_label"])
+        if group.get("flagged") and re.search(
+            rf"{label}[^.!?]{{0,65}}\\b(?:was|is|were) not flagged\\b",
+            text,
+            re.IGNORECASE,
+        ):
+            _log.warning("Grounding rejected a reversed group flag")
+            return False
+        if not group.get("flagged") and re.search(
+            rf"{label}[^.!?]{{0,65}}\\b(?:was|is|were) flagged\\b",
+            text,
+            re.IGNORECASE,
+        ):
+            _log.warning("Grounding rejected a fabricated group flag")
+            return False
+
     flagged = any(group.get("flagged") for group in groups if isinstance(group, dict))
     if flagged and _NO_FLAG_RE.search(text):
         _log.warning("Grounding rejected a contradictory no-flags claim")
