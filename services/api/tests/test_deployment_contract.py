@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from scripts.verify_cloudrun_deployment import validate_health, validate_openapi
 
 _SHA = "a" * 40
