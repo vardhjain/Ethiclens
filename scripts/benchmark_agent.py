@@ -322,7 +322,9 @@ def render_markdown(report: dict) -> str:
                 f"{reasons} |"
             )
         if result["di_coverage_reason"]:
-            notes.append(f"**{result['key']} DI headline withheld:** {result['di_coverage_reason']}")
+            notes.append(
+                f"**{result['key']} DI headline withheld:** {result['di_coverage_reason']}"
+            )
         if result["composite_reason"]:
             notes.append(f"**{result['key']} composite unavailable:** {result['composite_reason']}")
 
