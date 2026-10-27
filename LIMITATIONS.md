@@ -43,7 +43,7 @@ process — a remote-code-execution risk. Model-file HTTP endpoints and model-ba
 execution are disabled by default; the Cloud Run entrypoint enforces that mode.
 `ENABLE_MODEL_FILE_INGESTION=true` is only for *trusted local* model files and must
 not be enabled on a public API. A real isolated loader is future work; see
-[`ADR 0002`](docs/adr/0002-onnx-keystone-and-sandbox.md).
+[`ADR 0002`](https://github.com/vardhjain/Ethiclens/blob/main/docs/adr/0002-onnx-keystone-and-sandbox.md).
 
 ## 7. Counterfactual probing tests a narrow notion of fairness
 Flipping a single protected attribute and holding all else fixed measures *ceteris paribus*
@@ -113,7 +113,7 @@ subsequent changes, especially when the original fingerprint was retained in
 an independent system. However, both the fingerprint and data live in the same
 database: anyone able to rewrite both can conceal changes. This is **not** a
 digital signature or immutable audit ledger. See
-[`docs/governance-integrity.md`](docs/governance-integrity.md).
+[`docs/governance-integrity.md`](https://github.com/vardhjain/Ethiclens/blob/main/docs/governance-integrity.md).
 
 ## 15. Insufficient evidence must not look like a fairness pass
 The audit now checks minimum subgroup sizes on **both** sides of every comparison,
