@@ -27,7 +27,7 @@ from ethiclens_api.agent.narrative import build_scorecard
 _EXPECTED_PATHS = {
     "compas": (True, False, False),
     "adult_income": (True, True, True),
-    "synthetic_hiring": (False, False, True),
+    "synthetic_hiring": (False, True, True),
 }
 
 
