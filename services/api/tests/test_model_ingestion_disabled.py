@@ -55,7 +55,8 @@ async def test_legacy_model_session_cannot_run_or_mitigate(client: AsyncClient, 
         await db.commit()
         session_id = session.id
 
-    assert (await client.post(f"/api/sessions/{session_id}/run", headers=headers)).status_code == 403
+    run = await client.post(f"/api/sessions/{session_id}/run", headers=headers)
+    assert run.status_code == 403
     response = await client.post(
         f"/api/sessions/{session_id}/mitigate",
         headers=headers, json={"strategy": "threshold_optimizer"},
