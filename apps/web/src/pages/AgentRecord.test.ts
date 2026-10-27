@@ -165,7 +165,7 @@ describe("buildMarkdownReport", () => {
     expect(md).toContain(
       "## Mitigation: before vs. after (measured on held-out data)",
     );
-    expect(md).toContain("0.566 → 0.850 (crosses 0.80 threshold)");
+    expect(md).toContain("0.566 → 0.850 (point estimate crosses 0.80)");
   });
 });
 

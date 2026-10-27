@@ -156,7 +156,7 @@ export function buildMarkdownReport(r: AgentRecord): string {
       `- Strategy: ${m.strategy}`,
       `- Group: ${m.group_label} (n=${m.n_test} held-out rows)`,
       `- Disparate Impact: ${m.di_before.toFixed(3)} → ${m.di_after.toFixed(3)}` +
-        (m.crossed_threshold ? " (crosses 0.80 threshold)" : ""),
+        (m.crossed_threshold ? " (point estimate crosses 0.80)" : ""),
       `- Accuracy: ${m.accuracy_before.toFixed(3)} → ${m.accuracy_after.toFixed(3)} ` +
         `(cost: ${(m.accuracy_cost * 100).toFixed(1)} pts)`,
     );
@@ -188,12 +188,13 @@ function MeasuredMitigationChart({
         <Badge color="green">Measured on held-out data</Badge>
         <Badge variant="light">{measured.strategy}</Badge>
         {measured.crossed_threshold && (
-          <Badge color="teal">Crosses 0.80 DI threshold</Badge>
+          <Badge color="teal">Point estimate crosses 0.80 DI threshold</Badge>
         )}
       </Group>
       <Text size="sm" c="dimmed">
         {measured.group_label} — n={measured.n_test} held-out rows. Accuracy
-        cost: {(measured.accuracy_cost * 100).toFixed(1)} pts.
+        cost: {(measured.accuracy_cost * 100).toFixed(1)} pts. A threshold crossing
+        based on point estimates alone is not statistical evidence of mitigation.
       </Text>
       <Group grow align="flex-start">
         <div>
@@ -298,9 +299,9 @@ function MitigationCard({
       ) : (
         <Stack gap="lg">
           <Text size="sm" c="dimmed">
-            No continuous score column was provided, so this shows projected
-            estimates only — not a measured before/after. Upload a score column
-            to enable a measured chart.
+            Measured mitigation is unavailable (it requires true labels, a
+            continuous prediction score, a flagged cohort, and a viable held-out
+            optimizer). These are projected suggestions, not measured improvements.
           </Text>
           {groupEntries.map(([group, recs]) => (
             <ProjectedMitigationChart key={group} group={group} recs={recs} />

@@ -26,7 +26,7 @@ class ScorecardMeta:
     dataset: str = "synthetic"
     session_id: str = "—"
     audit_date: str = "—"  # caller supplies (the engine never reads the clock)
-    organization: str = "EquitaTech Systems"
+    organization: str = "Not provided"
     threshold: float = 0.80
     seed: int | None = None
     notes: list[str] = field(default_factory=list)
@@ -171,16 +171,16 @@ def generate_scorecard_pdf(result: AuditResult, meta: ScorecardMeta) -> bytes:
         di = g.metric(MetricName.DISPARATE_IMPACT)
         spd = g.metric(MetricName.SPD)
         eo = g.metric(MetricName.EQUALIZED_ODDS)
-        ci = di.ci if di and di.ci else None
+        ci = di.ci if di and di.computable and di.ci else None
         ci_s = f"[{_fmt(ci.low, 2)}, {_fmt(ci.high, 2)}]" if ci and not _nan(ci.low) else "—"
         eo_val = eo.value if eo and eo.value is not None else None
         rows.append(
             [
                 g.group_label,
-                _fmt(di.value if di else None),
+                _fmt(di.value if di and di.computable else None),
                 ci_s,
-                _fmt(spd.value if spd else None),
-                _fmt(eo_val) if eo_val is not None else "N/A",
+                _fmt(spd.value if spd and spd.computable else None),
+                _fmt(eo_val) if eo and eo.computable else "N/A",
                 "FLAG" if g.flagged else "INCONCLUSIVE" if _inconclusive(g) else "NO FLAG",
             ]
         )
@@ -205,6 +205,7 @@ def generate_scorecard_pdf(result: AuditResult, meta: ScorecardMeta) -> bytes:
         "<b>What this scorecard does and does not prove.</b> Metrics are statistical "
         "evidence, not a legal clearance. The composite is a triage convenience, not a "
         "standard; always read the per-group values and their confidence intervals. "
+        "Point estimates with insufficient evidence are withheld, not treated as passes. "
         "Equalized Odds requires ground-truth labels and both groups to meet label-count "
         "floors; the composite is withheld if any comparison is insufficient. "
         f"Audit reproduced under seed {meta.seed if meta.seed is not None else 'fixed'} "

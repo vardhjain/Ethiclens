@@ -170,7 +170,10 @@ EthicLens distinguishes the **minimum group Disparate Impact** from the
 has adequate DI evidence; the latter requires reliable DI, SPD **and** Equalized
 Odds in every group. A predictions-only audit can therefore report an informative
 DI without inventing Equalized Odds or a composite risk band. An underpowered
-cohort still blocks the all-groups DI headline. The UI explicitly labels
+cohort still blocks the all-groups DI headline. A tiny subgroup excluded by
+the agent planner likewise blocks the DI and composite headline; valid
+per-comparison metrics and statistically supported flags remain visible.
+The UI explicitly labels
 unassessed metrics and never interprets a non-flag as proof of fairness.
 
 ## Reproduce the agent's offline evidence
@@ -206,6 +209,15 @@ python -m scripts.benchmark_agent --repeats 2 --out-dir artifacts/agent-evidence
 hosted Q&A, network latency, production uptime, or a regulatory conclusion.
 CI timings are observational and should not be used as a cross-machine speed claim.
 Insufficient evidence is reported as unavailable rather than silently coerced to zero.
+
+## Engineering snapshot for reviewers
+
+- **Reproducibility:** [golden fairness gate](https://github.com/vardhjain/Ethiclens/actions/workflows/golden-audit.yml) checks the frozen regression anchor; [offline agent evidence](https://github.com/vardhjain/Ethiclens/actions/workflows/agent-evidence.yml) publishes per-cohort eligibility, intervals and limitations as downloadable artifacts, without paid inference.
+- **Measurement boundaries:** DI and SPD use observed decisions; Equalized Odds requires true labels. The all-groups summaries are withheld if any protected subgroup is insufficient or excluded. A CI-backed threshold flag is **not** a legal compliance finding.
+- **Applied ML:** The COMPAS example measures a held-out group-threshold mitigation when both labels and a continuous score are present; other recommendations in the predictions-only agent are projections, explicitly not empirical improvements.
+- **Safety and operations:** Human-confirmed outcome polarity, numerical LLM grounding, pre-provider quota enforcement, no public model deserialization, and deployment SHA verification are tested, with known limits in [LIMITATIONS.md](LIMITATIONS.md).
+
+**Try without an API key:** run the offline command above, open the generated `README.md` and `evidence.json`, and follow the individual cohort rows before interpreting any aggregate number. The hosted Cloud Run deployment is separately gated on cloud configuration.
 
 ## 🤖 The hosted agent
 
