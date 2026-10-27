@@ -121,7 +121,8 @@ def _group(*, di: dict, eo: dict | None = None, spd: dict | None = None) -> dict
         "metrics": {
             "disparate_impact": di,
             "spd": spd or {"value": -0.1, "classification": "FLAGGED"},
-            "equalized_odds": eo or {
+            "equalized_odds": eo
+            or {
                 "value": None,
                 "classification": "INSUFFICIENT_DATA",
                 "details": {"reason": "Ground-truth labels are unavailable."},
