@@ -199,7 +199,7 @@ flowchart TD
 | LLM never computes a metric or threshold | `agent/audit_planner.py`, `agent/executor.py` — no LLM import in either |
 | Numeric claims are checked against numeric scorecard values; key categorical contradictions are rejected | `agent/grounding.py`; regenerate once, then degrade to numeric-only |
 | An audit never runs on an unconfirmed schema guess | two-endpoint split (`/propose-schema` → `/run-audit`) in `routers/agent.py` |
-| LLM cost has a hard daily ceiling, degrades gracefully | `agent/quota.py`, `usage_counter` table |
+| LLM requests use atomic per-attempt reservations (including retries and provider fallback); degrade on exhaustion | `agent/quota.py`, `agent/llm_client.py`, `usage_counter` / `user_usage_counter` |
 | Uploaded data is never persisted, only the derived scorecard | `AgentAuditRecord` model; 5MB / 50,000-row upload caps |
 
 **What's deliberately not in the hosted deployment, and why:** the arq/Redis worker queue
@@ -320,3 +320,15 @@ contradictions (group flags/names, unsupported mitigation measurement, missing-l
 Equalized Odds and legal-clearance claims). It is **not** a general semantic
 entailment system. Failed checks trigger one regeneration and then a deterministic
 fallback. Human review remains necessary for consequential decisions.
+
+### LLM cost budget semantics
+
+EthicLens reserves one global and per-user UTC-day slot **before each outgoing SDK
+attempt**, including JSON retries, rejected-narrative regeneration, provider fallback,
+and failed provider requests. The reservation is atomic across both caps; a concurrent
+request cannot slip through the old check-then-increment race. A denied reservation
+prevents further provider calls: audit narratives fall back to deterministic text,
+while schema inference and Q&A return HTTP 429. Provider requests are counted even
+when they fail because charges may still accrue. No live LLM tests or paid compute
+are required to verify the quotas. These are **attempt budgets**, not token/currency
+billing limits; upstream SDK-internal automatic retries are not individually metered.

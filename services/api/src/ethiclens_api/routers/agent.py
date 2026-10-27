@@ -24,9 +24,10 @@ from __future__ import annotations
 import asyncio
 import logging
 from functools import lru_cache
-from pathlib import Path
 from uuid import UUID
 
+from sqlalchemy.exc import SQLAlchemyError
+from pathlib import Path
 import pandas as pd
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, ValidationError
@@ -37,10 +38,16 @@ from ethiclens_api.agent.audit_planner import plan_audit
 from ethiclens_api.agent.csv_ingest import read_predictions_csv
 from ethiclens_api.agent.demo_datasets import get_demo_dataset, list_demo_datasets
 from ethiclens_api.agent.executor import execute_plan, measure_top_mitigation
-from ethiclens_api.agent.llm_client import LLMCallError, build_default_client_or_none
+from ethiclens_api.agent.llm_client import (
+    LLMCallError,
+    LLMClient,
+    LLMQuotaExceeded,
+    bind_attempt_quota,
+    build_default_client_or_none,
+)
 from ethiclens_api.agent.narrative import build_scorecard, generate_narrative, unavailable_result
 from ethiclens_api.agent.qa import ask
-from ethiclens_api.agent.quota import has_budget, has_user_budget, record_llm_call
+from ethiclens_api.agent.quota import reserve_llm_attempt
 from ethiclens_api.agent.schema_inference import infer_schema
 from ethiclens_api.agent.schemas import AskRequest, SchemaInferenceProposal
 from ethiclens_api.config import get_settings
@@ -51,6 +58,32 @@ from ethiclens_api.security import get_current_user
 _log = logging.getLogger("ethiclens.agent")
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
+
+
+def _metered_llm(
+    client: LLMClient, db: AsyncSession, user_id: UUID, global_cap: int, user_cap: int
+) -> LLMClient:
+    """Bridge worker-thread SDK calls to atomic async database reservations.
+
+    Every agent LLM call uses asyncio.to_thread, leaving the event loop free to
+    perform the transactional reservation before the synchronous SDK is invoked.
+    Failed reservations raise; provider fallback must not swallow that exception.
+    """
+    loop = asyncio.get_running_loop()
+
+    def reserve() -> None:
+        task = asyncio.run_coroutine_threadsafe(
+            reserve_llm_attempt(db, user_id, global_cap, user_cap), loop
+        )
+        try:
+            allowed = task.result()
+        except SQLAlchemyError as exc:
+            # Fail closed: never send an unmetered request during a DB outage.
+            raise LLMQuotaExceeded("LLM usage accounting is unavailable") from exc
+        if not allowed:
+            raise LLMQuotaExceeded("Daily LLM request budget exhausted")
+
+    return bind_attempt_quota(client, reserve)
 
 
 async def _owned_record(record_id: UUID, user: UserAccount, db: AsyncSession) -> AgentAuditRecord:
@@ -132,27 +165,23 @@ async def _run_and_persist(
     scorecard, _recommendations = build_scorecard(result, plan, measured_mitigation)
 
     client = build_default_client_or_none(settings.groq_api_key, settings.gemini_api_key)
-    has_quota = (
-        client is not None
-        and await has_budget(db, settings.agent_daily_llm_call_cap)
-        and await has_user_budget(db, user.id, settings.agent_daily_llm_call_cap_per_user)
-    )
-    if has_quota:
-        assert client is not None
+    if client is not None:
+        metered = _metered_llm(
+            client,
+            db,
+            user.id,
+            settings.agent_daily_llm_call_cap,
+            settings.agent_daily_llm_call_cap_per_user,
+        )
         try:
-            narrative_result = await asyncio.to_thread(generate_narrative, client, scorecard)
-        except LLMCallError as exc:
-            # All configured providers failed (outage, bad key, rate limit). The
-            # deterministic stages above already succeeded — degrade to a numeric-only
-            # narrative rather than discard a completed audit with a bare 500.
-            _log.warning("Narrative generation failed, degrading to numeric-only: %s", exc)
+            narrative_result = await asyncio.to_thread(generate_narrative, metered, scorecard)
+        except (LLMCallError, LLMQuotaExceeded) as exc:
+            # An upstream outage, invalid response or exhausted quota must not
+            # discard the completed deterministic audit.
+            _log.warning("Narrative unavailable; using numeric fallback: %s", exc)
             narrative_result = unavailable_result(scorecard)
-        await record_llm_call(db, user.id)
     else:
-        if client is None:
-            _log.info("No LLM provider configured; narrative will be numeric-only")
-        else:
-            _log.info("Daily LLM call budget exhausted; narrative will be numeric-only")
+        _log.info("No LLM provider configured; narrative will be numeric-only")
         narrative_result = unavailable_result(scorecard)
 
     record = AgentAuditRecord(
@@ -197,31 +226,32 @@ async def propose_schema(
             "Schema inference requires an LLM provider; none is configured "
             "(set GROQ_API_KEY or GEMINI_API_KEY).",
         )
-    if not await has_budget(db, settings.agent_daily_llm_call_cap):
-        raise HTTPException(
-            status.HTTP_429_TOO_MANY_REQUESTS,
-            "Daily LLM call budget exhausted; try again tomorrow.",
-        )
-    if not await has_user_budget(db, user.id, settings.agent_daily_llm_call_cap_per_user):
-        raise HTTPException(
-            status.HTTP_429_TOO_MANY_REQUESTS,
-            "Your daily LLM call budget is exhausted; try again tomorrow.",
-        )
     data = await read_predictions_csv(
         file,
         max_mb=settings.agent_max_upload_mb,
         max_rows=settings.agent_max_rows,
         max_columns=settings.agent_max_columns,
     )
+    metered = _metered_llm(
+        client,
+        db,
+        user.id,
+        settings.agent_daily_llm_call_cap,
+        settings.agent_daily_llm_call_cap_per_user,
+    )
     try:
-        proposal = await asyncio.to_thread(infer_schema, client, data)
+        proposal = await asyncio.to_thread(infer_schema, metered, data)
+    except LLMQuotaExceeded as exc:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Daily LLM request budget exhausted; try again tomorrow.",
+        ) from exc
     except LLMCallError as exc:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "Schema inference is temporarily unavailable (all LLM providers failed). "
             "Try again shortly.",
         ) from exc
-    await record_llm_call(db, user.id)
     return proposal
 
 
@@ -382,22 +412,23 @@ async def ask_about_record(
             "Q&A requires an LLM provider; none is configured "
             "(set GROQ_API_KEY or GEMINI_API_KEY).",
         )
-    if not await has_budget(db, settings.agent_daily_llm_call_cap):
-        raise HTTPException(
-            status.HTTP_429_TOO_MANY_REQUESTS,
-            "Daily LLM call budget exhausted; try again tomorrow.",
-        )
-    if not await has_user_budget(db, user.id, settings.agent_daily_llm_call_cap_per_user):
-        raise HTTPException(
-            status.HTTP_429_TOO_MANY_REQUESTS,
-            "Your daily LLM call budget is exhausted; try again tomorrow.",
-        )
+    metered = _metered_llm(
+        client,
+        db,
+        user.id,
+        settings.agent_daily_llm_call_cap,
+        settings.agent_daily_llm_call_cap_per_user,
+    )
     try:
-        result = await asyncio.to_thread(ask, client, record.scorecard, body.question)
+        result = await asyncio.to_thread(ask, metered, record.scorecard, body.question)
+    except LLMQuotaExceeded as exc:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Daily LLM request budget exhausted; try again tomorrow.",
+        ) from exc
     except LLMCallError as exc:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "Q&A is temporarily unavailable (all LLM providers failed). Try again shortly.",
         ) from exc
-    await record_llm_call(db, user.id)
     return {"answer": result.answer, "grounded": result.grounded, "degraded": result.degraded}
