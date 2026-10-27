@@ -115,3 +115,9 @@ def test_explicit_numeric_group_names_remain_labels_not_evidence() -> None:
     scorecard = {"groups": [{"group_label": "group42:cohort7", "flagged": False}]}
     numbers = extract_source_numbers(__import__("json").dumps(scorecard))
     assert numbers == set()
+
+
+def test_sentence_final_fabricated_number_is_not_ignored() -> None:
+    assert not is_grounded("The measured score is 0.91.", {"0.55"})
+    assert not is_grounded("There were 42.", {"0.55"})
+    assert is_grounded("The measured score is 0.55.", {"0.55"})
