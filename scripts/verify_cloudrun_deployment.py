@@ -56,7 +56,7 @@ def verify_live(url: str, sha: str) -> None:
         except (HTTPError, URLError, TimeoutError):
             if attempt == 3:
                 raise
-            time.sleep(2 ** attempt)
+            time.sleep(2**attempt)
 
     try:
         with urlopen(f"{base}/api/models/upload", timeout=25) as response:
