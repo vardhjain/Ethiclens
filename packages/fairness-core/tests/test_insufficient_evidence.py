@@ -199,3 +199,18 @@ def test_di_headline_available_without_labels_but_not_composite() -> None:
     assert result.composite_score is None
     assert result.composite_band is None
     assert result.metadata["composite_complete"] is False
+
+
+def test_reference_group_is_not_compared_with_itself_when_explicitly_listed() -> None:
+    """Filtered cohort lists must not count reference-vs-reference as evidence."""
+    df = _frame([1] * 180 + [0] * 120, [1] * 100 + [0] * 200)
+    result = run_audit(
+        lambda frame: frame["prediction"].to_numpy(),
+        df,
+        [AttributeSpec("group", "A", ["A", "B"])],
+        feature_columns=["prediction"],
+        compute_ci=False,
+    )
+    assert [g.group_label for g in result.groups] == ["group:B"]
+    di = result.groups[0].metric(MetricName.DISPARATE_IMPACT)
+    assert di is not None and di.value == pytest.approx((100 / 300) / (180 / 300))

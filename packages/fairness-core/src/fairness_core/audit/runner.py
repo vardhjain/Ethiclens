@@ -174,7 +174,11 @@ def _audit_attribute(
     priv = spec.privileged_value
     if priv is None:
         priv = max(values, key=lambda v: compute_group_rates(sensitive, y_pred, v).selection_rate)
-    unpriv_values = spec.unprivileged_values or [v for v in values if v != priv]
+    candidates = spec.unprivileged_values or [v for v in values if v != priv]
+    # A reference cohort must never be compared with itself. The agent can
+    # supply a restricted list after excluding undersampled cohorts, and that
+    # list can contain the inferred reference value.
+    unpriv_values = [v for v in candidates if v != priv]
 
     priv_rates = compute_group_rates(sensitive, y_pred, priv, y_true)
     results: list[GroupAuditResult] = []

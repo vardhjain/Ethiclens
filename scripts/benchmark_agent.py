@@ -297,6 +297,7 @@ def render_markdown(report: dict) -> str:
             "|---|---|---:|---:|---|---|---|",
         ]
     )
+    notes: list[str] = []
     for result in report["cases"]:
         for group in result["group_evidence"]:
             di_text = f"{group['di_value']:.3f}" if group["di_supported"] else "Not assessed"
@@ -320,13 +321,12 @@ def render_markdown(report: dict) -> str:
                 f"{'Supported' if group['eo_supported'] else 'Not assessed'} | "
                 f"{reasons} |"
             )
-        rows.append("")
         if result["di_coverage_reason"]:
-            rows.append(f"**{result['key']} DI headline withheld:** {result['di_coverage_reason']}")
+            notes.append(f"**{result['key']} DI headline withheld:** {result['di_coverage_reason']}")
         if result["composite_reason"]:
-            rows.append(f"**{result['key']} composite unavailable:** {result['composite_reason']}")
-        rows.append("")
+            notes.append(f"**{result['key']} composite unavailable:** {result['composite_reason']}")
 
+    rows.extend(["", "## Headline availability", "", *notes, ""])
     rows += [
         "",
         "Timings are measured end-to-end on the current runner, include the "

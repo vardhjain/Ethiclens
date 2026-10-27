@@ -191,7 +191,9 @@ The report distinguishes a *diagnostic raw point estimate* from an adequately
 supported comparison. The former is retained in JSON for reproducibility but
 never displayed as valid evidence; an absent interval is labeled unavailable.
 The cohort confidence intervals are not simultaneous confidence intervals for
-the minimum across all groups.
+the minimum across all groups. Reference-group self-comparisons are excluded
+even after filtering small subgroups, so tautological 1.0 ratios cannot
+inflate the coverage denominator.
 
 Reproduce it locally with Python 3.12 and `uv` (no network after installation):
 
