@@ -1,0 +1,52 @@
+name: agent-evidence
+
+# An offline, repeatable benchmark of all shipped agent datasets. No LLM keys
+# or external datasets; report artifacts are attached to each successful run.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/benchmark_agent.py"
+      - "services/api/src/ethiclens_api/agent/**"
+      - "services/api/tests/test_benchmark_agent.py"
+      - "packages/fairness-core/**"
+      - ".github/workflows/agent-evidence.yml"
+      - "uv.lock"
+  pull_request:
+    paths:
+      - "scripts/benchmark_agent.py"
+      - "services/api/src/ethiclens_api/agent/**"
+      - "services/api/tests/test_benchmark_agent.py"
+      - "packages/fairness-core/**"
+      - ".github/workflows/agent-evidence.yml"
+      - "uv.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: offline demo evidence (no LLM/cloud)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - name: Install local packages (no hosted APIs)
+        run: |
+          uv pip install --system \
+            -e "packages/fairness-core[validation,viz,cli]" \
+            -e "services/api[test]"
+      - name: Generate machine-readable and reviewer-friendly evidence
+        run: python -m scripts.benchmark_agent --repeats 2 --out-dir artifacts/agent-evidence
+      - name: Attach evaluation evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-offline-evidence
+          path: artifacts/agent-evidence/
+          if-no-files-found: error
+          retention-days: 30
