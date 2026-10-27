@@ -134,9 +134,7 @@ def run_audit(
             "features": features,
             "threshold": threshold,
             "insufficient_groups": [
-                g.group_label
-                for g in groups
-                if any(not m.computable for m in g.metrics.values())
+                g.group_label for g in groups if any(not m.computable for m in g.metrics.values())
             ],
             "composite_complete": composite is not None,
         },
@@ -236,9 +234,7 @@ def _audit_pair(
             round(p.selection_rate * p.n),
             p.n,
         )
-    di_ci_valid = (
-        di_ci is not None and np.isfinite(di_ci.low) and np.isfinite(di_ci.high)
-    )
+    di_ci_valid = di_ci is not None and np.isfinite(di_ci.low) and np.isfinite(di_ci.high)
     # A numerical ratio crossing 0.80 is NOT proof of a statistically
     # supported violation. Never fall back to that point estimate for a flag.
     flagged_di = bool(
@@ -263,8 +259,11 @@ def _audit_pair(
             "n_privileged": p.n,
             "n_unprivileged": u.n,
             **(
-                {"reason": rate_reason if not enough_rates or not rates_defined
-                 else "Disparate Impact is undefined when the reference selection rate is zero."}
+                {
+                    "reason": rate_reason
+                    if not enough_rates or not rates_defined
+                    else "Disparate Impact is undefined when the reference selection rate is zero."
+                }
                 if not di_ok
                 else {}
             ),
@@ -300,10 +299,9 @@ def _audit_pair(
         eo_val = calculate_eo(p.tpr, p.fpr, u.tpr, u.fpr)
         p_pos = int(np.count_nonzero((sensitive == priv_value) & (y_true == 1)))
         u_pos = int(np.count_nonzero((sensitive == unpriv_value) & (y_true == 1)))
-        enough_eo = (
-            has_sufficient_data(p.n, p_pos, p.n - p_pos, error_metric=True)
-            and has_sufficient_data(u.n, u_pos, u.n - u_pos, error_metric=True)
-        )
+        enough_eo = has_sufficient_data(
+            p.n, p_pos, p.n - p_pos, error_metric=True
+        ) and has_sufficient_data(u.n, u_pos, u.n - u_pos, error_metric=True)
         eo_ci = (
             equalized_odds_ci(
                 sensitive, y_pred, y_true, priv_value, unpriv_value, n_boot=n_boot, seed=seed
@@ -311,9 +309,7 @@ def _audit_pair(
             if compute_ci and enough_eo
             else None
         )
-        eo_ci_valid = (
-            eo_ci is not None and np.isfinite(eo_ci.low) and np.isfinite(eo_ci.high)
-        )
+        eo_ci_valid = eo_ci is not None and np.isfinite(eo_ci.low) and np.isfinite(eo_ci.high)
         flagged_eo = bool(
             enough_eo and eo_ci_valid and eo_ci is not None and eo_ci.low > EO_THRESHOLD
         )
@@ -338,8 +334,10 @@ def _audit_pair(
                 "n_positive_unprivileged": u_pos,
                 "n_negative_unprivileged": u.n - u_pos,
                 **(
-                    {"reason": "Equalized Odds requires at least 30 positive and 30 negative "
-                     "labels in EACH comparison group."}
+                    {
+                        "reason": "Equalized Odds requires at least 30 positive and 30 negative "
+                        "labels in EACH comparison group."
+                    }
                     if not enough_eo
                     else {}
                 ),
