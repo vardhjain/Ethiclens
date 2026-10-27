@@ -169,17 +169,12 @@ def test_labeled_large_groups_still_have_complete_composite() -> None:
     assert result.metadata["composite_reason"] is None
 
 
-
 def test_partial_di_evidence_never_produces_a_selective_minimum() -> None:
     """One adequately powered cohort cannot mask an underpowered second group."""
     df = pd.DataFrame(
         {
             "group": ["A"] * 400 + ["B"] * 400 + ["C"] * 20,
-            "prediction": (
-                [1] * 360 + [0] * 40
-                + [1] * 120 + [0] * 280
-                + [1] + [0] * 19
-            ),
+            "prediction": ([1] * 360 + [0] * 40 + [1] * 120 + [0] * 280 + [1] + [0] * 19),
         }
     )
     result = run_audit(
