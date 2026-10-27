@@ -196,9 +196,9 @@ def render_markdown(report: dict) -> str:
         "p95 latency, inference accuracy, dollar cost, or fairness improvement "
         "can be inferred from them.",
         "",
-        "Overall DI may be inconclusive even if some group-level DI estimates are " 
-        "computable: see the group_evidence records instead of treating the " 
-        "missing aggregate as zero.", 
+        "Overall DI may be inconclusive even if some group-level DI estimates are "
+        "computable: see the group_evidence records instead of treating the "
+        "missing aggregate as zero.",
         "",
         "See `evidence.json` for source-file SHA-256 hashes, per-stage median/min/max "
         "timings and each dataset's actual held-out mitigation fields. Null values "
