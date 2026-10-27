@@ -188,6 +188,8 @@ set, so merging it before you've done steps 1-3 is safe.
    daily LLM budget cap is hit — see `agent_daily_llm_call_cap` in
    `config.py`).
 3. Ask a question in the chat panel; confirm it's grounded in the scorecard.
+4. Check `/openapi.json`: it must not contain `/api/models/upload`. A direct
+   request to that path should return 404.
 
 ## What's intentionally not enabled here
 
@@ -196,8 +198,11 @@ set, so merging it before you've done steps 1-3 is safe.
   `agent_daily_llm_call_cap*` in `config.py`) is the guard there instead.
   Login/register *are* IP-rate-limited (slowapi — see `rate_limit.py`), since
   those are open, unauthenticated endpoints on a public demo.
-- **Model file uploads** — the agent pipeline only ever accepted predictions
-  CSVs, never model files, so there's nothing to disable here; it was
-  designed this way from the start (see agent/csv_ingest.py).
+- **Model file ingestion and execution** — disabled in the hosted deployment.
+  `ENABLE_MODEL_FILE_INGESTION` defaults to `false` and the Cloud Run entrypoint
+  forces `false` even if an old environment variable says otherwise. The API
+  does not register `/api/models/*` routes, and HTTP and worker execution paths
+  reject legacy model-backed sessions. The agent still audits predictions CSVs.
+  Trusted-local opt-in loading is **not sandboxed** and must not be exposed publicly.
 - **arq/Redis worker** — not deployed at all; `EAGER_TASKS=true` makes it
   unnecessary (see `ethiclens_api/tasks.py`).

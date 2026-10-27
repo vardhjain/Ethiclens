@@ -1,15 +1,10 @@
-"""Model ingestion with an honest security posture.
+"""Trusted-local-only model ingestion (not sandboxed).
 
-Deserialising an uploaded ``.pkl`` / ``.pt`` / ``.h5`` runs arbitrary code — a
-remote-code-execution vector the original spec ignored. We handle it in layers
-(see ``docs/adr/0002-onnx-keystone-and-sandbox.md``):
-
-1. **Validate** before loading: extension allow-list, size cap, magic bytes.
-2. **Prefer safe formats** (ONNX-direct, ``skops``) over pickle.
-3. **Contain** the unavoidable pickle load in a separate, resource-limited
-   subprocess with a hard timeout (defense-in-depth, not a guarantee).
-4. **Convert to ONNX** for a single, safe inference path where the toolchain is
-   available — ONNX is the *portability* keystone, **not** the security control.
+Python pickle/joblib loading and best-effort ONNX conversion can execute code
+inside the API/worker process. These functions must never process untrusted
+model artifacts. HTTP model routes and model-backed audit execution are disabled
+by default. The hosted Cloud Run entrypoint forces that disabled mode.
+See docs/adr/0002-onnx-keystone-and-sandbox.md for the unimplemented sandbox design.
 """
 
 from __future__ import annotations
@@ -68,8 +63,8 @@ def validate_model_file(path: str | Path, max_mb: int = 512) -> ModelFramework:
 def load_predictor(path: str | Path, framework: ModelFramework):
     """Return a fitted predictor exposing ``predict`` / ``predict_proba``.
 
-    sklearn models load via joblib (in production, inside the sandbox described
-    in the module docstring). TensorFlow/PyTorch artefacts are expected to be
+    Sklearn models load via joblib (unsafe deserialization; no sandbox).
+    TensorFlow/PyTorch artefacts are expected to be
     converted to ONNX on ingestion; this function loads the ONNX form when
     available and otherwise raises a clear, actionable error.
     """

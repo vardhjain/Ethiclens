@@ -8,12 +8,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ethiclens_api.config import get_settings
 from ethiclens_api.db import get_session
 from ethiclens_api.models import (
     AuditSession,
     FairnessMetric,
     ProtectedAttribute,
     SessionStatus,
+    UploadedModel,
     UserAccount,
 )
 from ethiclens_api.schemas import (
@@ -51,12 +53,25 @@ async def _owned(session_id: UUID, user: UserAccount, db: AsyncSession) -> Audit
     return obj
 
 
+def _check_model_execution_allowed(obj: AuditSession) -> None:
+    """Prevent execution of legacy model-backed sessions after disabling ingestion."""
+    if obj.model_id is not None and not get_settings().enable_model_file_ingestion:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Model-file execution is disabled")
+
+
 @router.post("/create", response_model=SessionOut, status_code=status.HTTP_201_CREATED)
 async def create_session(
     body: SessionCreate,
     db: AsyncSession = Depends(get_session),
     user: UserAccount = Depends(get_current_user),
 ) -> AuditSession:
+    if body.model_id is not None:
+        if not get_settings().enable_model_file_ingestion:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Model-file ingestion is disabled")
+        model = await db.get(UploadedModel, body.model_id)
+        if model is None or model.owner_id != user.id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Model not found")
+
     obj = AuditSession(
         owner_id=user.id,
         model_id=body.model_id,
@@ -89,6 +104,7 @@ async def run_session(
     user: UserAccount = Depends(get_current_user),
 ) -> dict:
     obj = await _owned(session_id, user, db)
+    _check_model_execution_allowed(obj)
     if obj.locked:
         raise HTTPException(status.HTTP_409_CONFLICT, "Session is locked")
     obj.status = SessionStatus.QUEUED
@@ -204,7 +220,8 @@ async def mitigate_session(
     db: AsyncSession = Depends(get_session),
     user: UserAccount = Depends(get_current_user),
 ) -> dict:
-    await _owned(session_id, user, db)
+    obj = await _owned(session_id, user, db)
+    _check_model_execution_allowed(obj)
     child_id = await enqueue_mitigation(session_id, body.strategy, body.group_label)
     return {"result_session_id": str(child_id) if child_id else None, "status": "QUEUED"}
 

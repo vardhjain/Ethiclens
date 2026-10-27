@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ethiclens_api.config import get_settings
 from ethiclens_api.db import SessionLocal
 from ethiclens_api.models import (
     AuditSession,
@@ -55,6 +56,9 @@ def _build_dataframe(dataset: str, seed: int) -> tuple[pd.DataFrame, str]:
 
 def _resolve_model(inputs: _AuditInputs, df: pd.DataFrame, target: str, features: list[str]):
     if inputs.model_uri:
+        # This also protects preexisting records and previously queued worker jobs.
+        if not get_settings().enable_model_file_ingestion:
+            raise PermissionError("Model-file execution is disabled")
         from ethiclens_api.ingestion import ModelFramework, load_predictor
 
         framework = ModelFramework(inputs.model_framework or "sklearn")

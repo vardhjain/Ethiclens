@@ -37,12 +37,13 @@ floors (100 for rates; 30 positives **and** 30 negatives for error metrics) Ethi
 `INSUFFICIENT_DATA`. Intersectional subgroups thin out fast; a wide CI means "we don't know," not
 "it's fair."
 
-## 6. The model sandbox is defense-in-depth, not a guarantee
-Uploaded models are deserialised inside a network-isolated, resource-limited container because
-unpickling untrusted files is remote code execution. This raises the bar substantially but is
-**not** a guarantee against a determined attacker with a sandbox-escape. Prefer the safe formats
-(`safetensors`, `skops`, ONNX-direct); treat pickle as a discouraged fallback. See
-[`docs/adr/0002-onnx-keystone-and-sandbox.md`](https://github.com/vardhjain/Ethiclens/blob/main/docs/adr/0002-onnx-keystone-and-sandbox.md).
+## 6. Untrusted model files are not safely sandboxed
+The current code can deserialize Python pickle/joblib files inside the API or worker
+process — a remote-code-execution risk. Model-file HTTP endpoints and model-backed
+execution are disabled by default; the Cloud Run entrypoint enforces that mode.
+`ENABLE_MODEL_FILE_INGESTION=true` is only for *trusted local* model files and must
+not be enabled on a public API. A real isolated loader is future work; see
+[`ADR 0002`](docs/adr/0002-onnx-keystone-and-sandbox.md).
 
 ## 7. Counterfactual probing tests a narrow notion of fairness
 Flipping a single protected attribute and holding all else fixed measures *ceteris paribus*
@@ -92,9 +93,9 @@ provider's own retention policy — "never persisted by EthicLens" does not mean
 third party."
 
 ## 13. The hosted agent intentionally exposes a smaller surface than the full repo
-Model-file ingestion and the arq/Redis worker queue both exist in this repository and are
-exercised by the enterprise `/sessions` flow and its test suite, but are **not** present in the
-agent's hosted deployment: it accepts predictions CSVs only (never model files — see
+Model-file ingestion and the arq/Redis worker queue exist in this repository, but
+model-file ingestion and execution are explicitly **disabled** in the hosted deployment.
+The hosted agent accepts predictions CSVs only (see
 [`agent/csv_ingest.py`](https://github.com/vardhjain/Ethiclens/blob/main/services/api/src/ethiclens_api/agent/csv_ingest.py))
 and runs every job in-process (`EAGER_TASKS=true`) instead of queuing to a worker. Each is a
 deliberate scope decision for a public, free-tier deployment, not a missing feature — see

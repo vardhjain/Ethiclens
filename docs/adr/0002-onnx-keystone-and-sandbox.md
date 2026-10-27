@@ -1,6 +1,6 @@
 # ADR 0002 — ONNX inference keystone and the untrusted-model sandbox
 
-- **Status:** Accepted
+- **Status:** Proposed architecture (NOT implemented end-to-end)
 - **Date:** 2026-05
 
 ## Context
@@ -16,7 +16,14 @@ FR-001 lets users upload trained models as `.h5` (TensorFlow), `.pt` (PyTorch) o
 These are **two different concerns** and must not be conflated. Converting to ONNX does **not**
 remove the RCE, because you must deserialise the original artefact *first* in order to convert it.
 
-## Decision
+## Current implementation status (October 2026)
+The current code uses `joblib.load()` without a sandbox, including during optional
+ONNX conversion. **Do not treat this ADR as evidence of a working sandbox.**
+Model routes and model-backed execution are disabled by default and hard-disabled
+on Cloud Run. Explicit opt-in is for trusted local files only. The design below
+remains a proposal requiring implementation and tests.
+
+## Proposed decision
 - **Portability — ONNX keystone.** On ingestion, convert every accepted model to ONNX and run a
   single `onnxruntime` inference path. The demo worker then ships only `onnxruntime`, not
   torch + tensorflow.
@@ -32,7 +39,7 @@ remove the RCE, because you must deserialise the original artefact *first* in or
 
 ## Consequences
 - "Framework-agnostic" becomes real (one inference path) without three brittle code branches.
-- The security posture is honest and demonstrable — a stronger interview signal than an
-  unqualified "we safely run untrusted models."
+- Isolation must be implemented and tested before the product can accept
+  untrusted model files; the trusted-local opt-in does not provide that guarantee.
 - Conversion has coverage limits (exotic custom layers may not export); these surface as explicit
   ingestion errors rather than silent failures.

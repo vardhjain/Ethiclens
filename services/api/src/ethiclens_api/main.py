@@ -31,8 +31,8 @@ logging.basicConfig(
 )
 
 DESCRIPTION = (
-    "EthicLens API — AI bias detection & mitigation workbench. Upload a model, "
-    "configure protected attributes, run an audit, review measured mitigations, and "
+    "EthicLens API — AI bias detection & mitigation workbench. Audit prediction "
+    "datasets, configure protected attributes, review measured mitigations, and "
     "route findings through a governance sign-off. All fairness math is delegated to the "
     "audited `fairness-core` package."
 )
@@ -86,7 +86,6 @@ def create_app() -> FastAPI:
     app.middleware("http")(add_security_headers)
     routers = (
         auth.router,
-        models.router,
         sessions.router,
         reports.router,
         governance.router,
@@ -94,6 +93,11 @@ def create_app() -> FastAPI:
     )
     for router in routers:
         app.include_router(router)
+
+    # Default-deny model-file routes in public deployments, including OpenAPI.
+    # The opt-in is for trusted local models only; loading is not sandboxed.
+    if get_settings().enable_model_file_ingestion:
+        app.include_router(models.router)
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict[str, str]:

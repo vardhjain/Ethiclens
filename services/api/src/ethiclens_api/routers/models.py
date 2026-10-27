@@ -35,13 +35,26 @@ async def upload_model(
     storage.mkdir(parents=True, exist_ok=True)
     suffix = Path(file.filename or "model").suffix.lower()
     dest = storage / f"{uuid4().hex}{suffix}"
-    dest.write_bytes(await file.read())
-
+    # Stream with a hard byte cap; never buffer an entire oversized upload.
+    max_bytes = settings.max_model_upload_mb * 1024 * 1024
     try:
+        total = 0
+        with dest.open("wb") as output:
+            while chunk := await file.read(1024 * 1024):
+                total += len(chunk)
+                if total > max_bytes:
+                    raise HTTPException(
+                        status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        f"Model exceeds the {settings.max_model_upload_mb}MB upload limit",
+                    )
+                output.write(chunk)
         framework = validate_model_file(dest, max_mb=settings.max_model_upload_mb)
     except IngestionError as exc:
         dest.unlink(missing_ok=True)
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    except Exception:
+        dest.unlink(missing_ok=True)
+        raise
 
     onnx_path = convert_to_onnx(dest, framework)  # best-effort
     model = UploadedModel(
