@@ -125,7 +125,7 @@ gcloud iam workload-identity-pools providers create-oidc github-provider \
   --project "$PROJECT_ID" --location global --workload-identity-pool github-pool \
   --issuer-uri "https://token.actions.githubusercontent.com" \
   --attribute-mapping "google.subject=assertion.sub,attribute.repository=assertion.repository" \
-  --attribute-condition "assertion.repository=='${REPO}'"
+  --attribute-condition "assertion.repository=='${REPO}' && assertion.ref=='refs/heads/main'"
 
 # 4. Let ONLY this specific repo impersonate the service account (no key ever
 #    leaves Google — GitHub's OIDC token is exchanged for short-lived creds).
