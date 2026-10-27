@@ -22,10 +22,13 @@ class Token(BaseModel):
 
 
 class UserCreate(BaseModel):
+    # Reject role (and any other unexpected fields) rather than silently ignoring
+    # client-supplied privilege escalation attempts.
+    model_config = ConfigDict(extra="forbid")
+
     email: EmailStr
     password: str = Field(min_length=8)
     full_name: str = ""
-    role: UserRole = UserRole.ML_ENGINEER
 
 
 class UserOut(BaseModel):
