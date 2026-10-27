@@ -114,7 +114,7 @@ def benchmark_case(dataset: DemoDataset, repeats: int) -> dict:
         "key": dataset.key,
         "title": dataset.title,
         "source_sha256": hashlib.sha256(dataset.csv_path.read_bytes()).hexdigest(),
-        "rows": int(len(last_data)),
+        "rows": len(last_data),
         "labels_available": last_scorecard["has_labels"],
         "positive_is_favorable": dataset.proposal.outcome_direction.positive_is_favorable,
         "continuous_score_available": dataset.proposal.score_column is not None,
