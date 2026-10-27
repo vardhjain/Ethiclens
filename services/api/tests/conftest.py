@@ -22,10 +22,12 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key-at-least-32-bytes-long")
 os.environ.setdefault("MODEL_STORAGE_DIR", str(Path(tempfile.gettempdir()) / "ethiclens_models"))
 
 import pytest  # noqa: E402
+from sqlalchemy import select  # noqa: E402
 import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 
-from ethiclens_api.db import Base, engine  # noqa: E402
+from ethiclens_api.db import Base, SessionLocal, engine  # noqa: E402
+from ethiclens_api.models import UserAccount, UserRole  # noqa: E402
 from ethiclens_api.main import app  # noqa: E402
 from ethiclens_api.rate_limit import limiter  # noqa: E402
 
@@ -50,11 +52,22 @@ async def client() -> AsyncIterator[AsyncClient]:
 async def _auth_headers(
     client: AsyncClient, email: str = "eng@example.com", role: str = "ml_engineer"
 ) -> dict[str, str]:
-    """Register (idempotently) + log in, returning an Authorization header."""
-    await client.post(
+    """Register + log in. Grant privileged test roles only via trusted DB setup."""
+    registration = await client.post(
         "/api/auth/register",
-        json={"email": email, "password": "password123", "role": role, "full_name": "Test"},
+        json={"email": email, "password": "password123", "full_name": "Test"},
     )
+    assert registration.status_code in (201, 409)
+
+    # The public API must never assign privileged roles. The test-only helper
+    # explicitly provisions them through the database for RBAC integration tests.
+    if role != UserRole.ML_ENGINEER.value:
+        async with SessionLocal() as session:
+            user = (
+                await session.execute(select(UserAccount).where(UserAccount.email == email))
+            ).scalar_one()
+            user.role = UserRole(role)
+            await session.commit()
     resp = await client.post("/api/auth/login", data={"username": email, "password": "password123"})
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
