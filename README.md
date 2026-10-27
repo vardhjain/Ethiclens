@@ -357,8 +357,8 @@ The benchmark uploads its actual outputs as downloadable CI artifacts.
 - 🏛️ [Architecture Decision Records](docs/adr/) — the choices and why.
 - 🔒 [Security policy](SECURITY.md) · 🤝 [Contributing](CONTRIBUTING.md) · 📝 [Changelog](CHANGELOG.md)
 - 🚀 [Deployment guide](DEPLOYMENT.md) — how the hosted agent gets to Cloud Run + Supabase + Vercel.
-  GitHub deploy runs fail visibly when Cloud Run is not configured; a successful
-  rollout must pass a live commit-SHA and model-upload lockdown smoke test.
+  Cloud Run deployment is manual-only: normal pushes do not build cloud resources,
+  and a manually requested rollout must pass commit-SHA and model-upload smoke tests.
 - ⚠️ [Limitations](LIMITATIONS.md) — what this does **not** prove.
 
 ## Provenance

@@ -1,22 +1,15 @@
 name: deploy-api
 
-# A successful workflow must mean a real Cloud Run rollout AND verified revision.
-# Missing repository variables are an actionable FAILURE, never a green no-op.
+# Opt-in only: ordinary pushes and PRs never build or deploy paid cloud resources.
+# A requested deployment must be real and verifiably current; missing configuration
+# is a failure, not a misleading green no-op.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "services/api/**"
-      - "packages/fairness-core/**"
-      - "Dockerfile"
-      - "infra/docker/entrypoint-cloudrun.sh"
-      - "ml/**"
-      - "models/**"
-      - "uv.lock"
-      - "pyproject.toml"
-      - "scripts/verify_cloudrun_deployment.py"
-      - ".github/workflows/deploy-api.yml"
   workflow_dispatch:
+    inputs:
+      confirm_deploy:
+        description: "Type DEPLOY to acknowledge that a Cloud Run build may incur charges"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -37,6 +30,7 @@ jobs:
       GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
       GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
       API_URL: ${{ vars.API_URL }}
+      CONFIRM_DEPLOY: ${{ inputs.confirm_deploy }}
     steps:
       - name: Require main branch and cloud deployment configuration
         shell: bash
@@ -46,6 +40,10 @@ jobs:
             echo "::error::Deploy only from main, not $GITHUB_REF"
             exit 1
           fi
+          if [[ "$CONFIRM_DEPLOY" != "DEPLOY" ]]; then
+            echo "::error::Deployment requires explicitly typing DEPLOY; no cloud resources touched."
+            exit 1
+          fi
           missing=()
           for key in GCP_PROJECT_ID GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
             if [[ -z "${!key}" ]]; then
@@ -53,11 +51,11 @@ jobs:
             fi
           done
           if (( ${#missing[@]} )); then
-            echo "::error title=Cloud Run was NOT deployed::Missing Actions variables: ${missing[*]}. See DEPLOYMENT.md (GitHub Actions auto-deploy)."
+            echo "::error title=Cloud Run was NOT deployed::Missing Actions variables: ${missing[*]}. See DEPLOYMENT.md (manual GitHub Actions deployment)."
             {
               echo "### Deployment blocked — no changes published"
               echo "Missing repository Actions variables: \`${missing[*]}\`."
-              echo "See [DEPLOYMENT.md](https://github.com/$GITHUB_REPOSITORY/blob/main/DEPLOYMENT.md#automatic-redeploys-via-github-actions-optional)."
+              echo "See [DEPLOYMENT.md](https://github.com/$GITHUB_REPOSITORY/blob/main/DEPLOYMENT.md#manual-github-actions-deployments-optional)."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
