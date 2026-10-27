@@ -89,14 +89,27 @@ existing env vars across deploys unless you explicitly change them). No git
 remote or manual sync step needed; it builds straight from your local working
 tree via Cloud Build.
 
-### Automatic redeploys via GitHub Actions (optional)
+### Manual GitHub Actions deployments (optional)
 
-`.github/workflows/deploy-api.yml` runs the same `gcloud run deploy
-ethiclens-api --source .` on every push to `main` that touches the API's
-source (path-filtered — frontend-only or docs-only commits don't trigger it).
-Same no-env-vars approach as the manual command above: it only needs
-permission to *deploy*, never your `DATABASE_URL`/`SECRET_KEY`/`*_API_KEY`
-values, which stay wherever you already set them on the Cloud Run service.
+**This workflow is opt-in and disabled for automatic pushes and pull requests.**
+Normal development, CI and merges will not run Cloud Build or Cloud Run,
+even if GitHub's cloud variables are missing. Previously failed deployment
+runs remain in the Actions history; no new deployment failure is generated
+just by pushing code.
+
+If you decide to host the backend later, first set up Google Cloud billing
+safeguards and the repository variables below. Then open
+[Actions → deploy-api](https://github.com/vardhjain/Ethiclens/actions/workflows/deploy-api.yml),
+select **Run workflow**, choose `main`, enter `DEPLOY` in the confirmation
+field and launch the run. **Do not trigger it while avoiding cloud charges.**
+The explicit confirmation and existing branch, configuration, revision and
+security checks guard the requested deployment; a manual run without valid
+configuration fails *before* invoking cloud services.
+
+The workflow uses the same `gcloud run deploy ethiclens-api --source .`
+command as the manual CLI setup. It only needs permission to deploy, never
+your `DATABASE_URL`/`SECRET_KEY`/`*_API_KEY` values, which remain on the
+Cloud Run service.
 
 It authenticates via **Workload Identity Federation** — no long-lived GCP key
 stored in GitHub. One-time setup (run once, locally, with `gcloud` logged in
@@ -143,10 +156,10 @@ add:
 - `GCP_SERVICE_ACCOUNT` = `github-deployer@$PROJECT_ID.iam.gserviceaccount.com`
 - `GCP_REGION` (optional — defaults to `us-central1` if unset)
 
-**Required action:** All three GitHub Actions variables must be configured by
-the repository owner. If any is missing, the `deploy-api` workflow now **fails
-loudly** (without invoking Cloud Run), rather than reporting a misleading
-successful deployment. Set variables under
+**Only when opting in to a manual deployment:** The repository owner must
+configure all three GitHub Actions variables. If any is missing when you
+manually trigger `deploy-api`, the workflow **fails clearly** without invoking
+Cloud Run. Ordinary pushes no longer schedule any deployment. Set variables under
 [Settings → Secrets and variables → Actions](https://github.com/vardhjain/Ethiclens/settings/variables/actions).
 You do not need to paste credentials into GitHub issues or a chat.
 
@@ -166,8 +179,8 @@ API image; the hosted Vercel frontend is a separate deployment.
 
 **Cost:** Triggering a genuine Cloud Run source build can incur Google
 Cloud Build/Artifact Registry/Cloud Run charges beyond applicable free
-tiers. This workflow does not deploy or create resources without your
-GCP setup; review billing safeguards before enabling auto-deploy.
+tiers. This workflow does not deploy or create resources unless you explicitly
+launch it and have configured GCP. Review billing safeguards before opting in.
 
 ## 3. Vercel (frontend)
 
