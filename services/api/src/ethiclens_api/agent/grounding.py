@@ -16,7 +16,7 @@ from typing import Any
 _log = logging.getLogger("ethiclens.agent.grounding")
 _NUMBER_RE = re.compile(
     r"(?<![\w.])[-+]?(?:\d{1,3}(?:,\d{3})+|\d+|\.\d+)"
-    r"(?:\.\d+)?(?:[eE][+-]?\d+)?%?(?![\w.])"
+    r"(?:\.\d+)?(?:[eE][+-]?\d+)?%?(?!\w)"
 )
 _GROUP_RE = re.compile(r"\b[a-zA-Z][\w.-]*:[a-zA-Z][\w.-]*\b")
 _CLEARANCE_RE = re.compile(
