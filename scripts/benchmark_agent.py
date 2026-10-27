@@ -31,9 +31,7 @@ _EXPECTED_PATHS = {
 }
 
 
-def validate_evidence(
-    dataset: DemoDataset, data: pd.DataFrame, scorecard: dict
-) -> None:
+def validate_evidence(dataset: DemoDataset, data: pd.DataFrame, scorecard: dict) -> None:
     """Guard against regressions and independently check the reported DI ratio."""
     expected_labels, expected_no_measurement, favorable = _EXPECTED_PATHS[dataset.key]
     if scorecard["has_labels"] is not expected_labels:
@@ -121,10 +119,7 @@ def benchmark_case(dataset: DemoDataset, repeats: int) -> dict:
         "cohort_comparisons": len(last_scorecard["groups"]),
         "flagged_cohorts": sum(bool(g["flagged"]) for g in last_scorecard["groups"]),
         "inconclusive_cohorts": sum(
-            any(
-                m.get("classification") == "INSUFFICIENT_DATA"
-                for m in g["metrics"].values()
-            )
+            any(m.get("classification") == "INSUFFICIENT_DATA" for m in g["metrics"].values())
             for g in last_scorecard["groups"]
         ),
         "min_disparate_impact": last_scorecard["min_disparate_impact"],
@@ -164,9 +159,7 @@ def render_markdown(report: dict) -> str:
         di = result["min_disparate_impact"]
         di_text = f"{di:.3f}" if di is not None else "not assessed"
         mm = result["heldout_mitigation"]
-        measured = (
-            f"yes (held-out n={mm['n_test']})" if mm is not None else "not available"
-        )
+        measured = f"yes (held-out n={mm['n_test']})" if mm is not None else "not available"
         polarity = "yes" if result["positive_is_favorable"] else "no (inverted)"
         rows.append(
             f"| {result['key']} | {result['rows']} | "
