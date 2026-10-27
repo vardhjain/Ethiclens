@@ -32,7 +32,7 @@ _PROPOSAL = {
 class _StubClient:
     def complete(self, system: str, prompt: str) -> str:
         if "Question:" in prompt:
-            return json.dumps({"answer": "race:B was flagged based on the scorecard."})
+            return json.dumps({"answer": "race:B was not flagged; data was insufficient."})
         if "Scorecard JSON" in prompt:
             return json.dumps(
                 {
@@ -427,7 +427,7 @@ async def test_ask_about_record_returns_grounded_answer(
     resp = await client.post(
         f"/api/agent/records/{record_id}/ask",
         headers=headers,
-        json={"question": "Why was race:B flagged?"},
+        json={"question": "Was race:B flagged?"},
     )
     assert resp.status_code == 200
     body = resp.json()
