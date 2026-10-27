@@ -68,3 +68,30 @@ def test_datasheet_has_sections() -> None:
     assert "# Datasheet" in md
     assert "Motivation" in md and "Composition" in md
     assert "1,000 rows" in md
+
+
+def test_reports_suppress_underpowered_point_estimates() -> None:
+    from fairness_core.reporting.scorecard import _fmt
+    from fairness_core.types import Classification
+
+    result = _audit()
+    group = result.groups[0]
+    di = group.metric(MetricName.DISPARATE_IMPACT)
+    assert di is not None
+    di.classification = Classification.INSUFFICIENT_DATA.value
+    di.value = 0.123  # diagnostic, not an eligible fairness estimate
+    result.composite_score = None
+    result.composite_band = None
+    result.min_di = None
+    markdown = generate_model_card(result)
+    assert "Not assessed" in markdown
+    assert "| race:Black | Not assessed | — |" in markdown
+    assert "(None)" not in markdown
+    assert "**Owner:** Not provided" in markdown
+
+    # Keep the PDF contract test without OCR: check generated PDF is valid;
+    # the same computable guard is applied to its rendered table cells.
+    pdf = generate_scorecard_pdf(result, ScorecardMeta())
+    assert pdf[:5] == b"%PDF-"
+    assert len(pdf) > 2000
+    assert _fmt(None) == "—"

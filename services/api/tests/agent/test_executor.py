@@ -158,3 +158,68 @@ def test_measure_top_mitigation_none_without_flagged_groups():
     data["race"] = "A"
     result = execute_plan(plan, data, direction)
     assert measure_top_mitigation(plan, data, direction, result) is None
+
+
+def test_excluded_small_cohort_blocks_all_group_headlines() -> None:
+    """A flagged/valid comparison cannot conceal an excluded tiny third cohort."""
+    from ethiclens_api.agent.audit_planner import plan_audit
+    from ethiclens_api.agent.schemas import SchemaInferenceProposal
+
+    data = pd.DataFrame(
+        {
+            "race": ["A"] * 240 + ["B"] * 240 + ["C"] * 12,
+            "decision": [1] * 180 + [0] * 60 + [1] * 48 + [0] * 192 + [1] * 2 + [0] * 10,
+            "feature": list(range(492)),
+        }
+    )
+    proposal = SchemaInferenceProposal(
+        protected_attribute_columns=["race"],
+        outcome_column="decision",
+        outcome_direction=OutcomeDirection(
+            positive_label_meaning="approved", positive_is_favorable=True
+        ),
+        true_label_column=None,
+        feature_columns=["feature"],
+        reasoning="fixed schema",
+    )
+    plan = plan_audit(proposal, data)
+    assert [e.group_value for e in plan.excluded_subgroups] == ["C"]
+    result = execute_plan(plan, data, proposal.outcome_direction)
+    assert [g.group_label for g in result.groups] == ["race:B"]
+    di = result.groups[0].metric("disparate_impact")
+    assert di is not None and di.value is not None
+    assert di.value < 0.8
+    assert result.min_di is None
+    assert result.composite_score is None
+    assert result.composite_band is None
+    assert result.metadata["composite_complete"] is False
+    assert "excluded" in result.metadata["min_di_reason"]
+    assert "excluded" in result.metadata["composite_reason"]
+
+
+def test_non_excluded_full_sample_retains_minimum_di() -> None:
+    from ethiclens_api.agent.audit_planner import plan_audit
+    from ethiclens_api.agent.schemas import SchemaInferenceProposal
+
+    data = pd.DataFrame(
+        {
+            "race": ["A"] * 240 + ["B"] * 240,
+            "decision": [1] * 180 + [0] * 60 + [1] * 48 + [0] * 192,
+            "feature": list(range(480)),
+        }
+    )
+    proposal = SchemaInferenceProposal(
+        protected_attribute_columns=["race"],
+        outcome_column="decision",
+        outcome_direction=OutcomeDirection(
+            positive_label_meaning="approved", positive_is_favorable=True
+        ),
+        true_label_column=None,
+        feature_columns=["feature"],
+        reasoning="fixed schema",
+    )
+    plan = plan_audit(proposal, data)
+    assert not plan.excluded_subgroups
+    result = execute_plan(plan, data, proposal.outcome_direction)
+    assert result.min_di == pytest.approx(48 / 240 / (180 / 240))
+    assert result.composite_score is None

@@ -138,6 +138,14 @@ def describe_group_evidence(groups: list[dict]) -> list[dict]:
 
 def validate_coverage(scorecard: dict, evidence: list[dict]) -> None:
     """Fail CI when a headline hides an excluded cohort or selects a subset."""
+    if scorecard.get("excluded_subgroups"):
+        if scorecard["min_disparate_impact"] is not None:
+            raise ValueError("minimum DI must be withheld when subgroups were excluded")
+        if scorecard["composite_score"] is not None:
+            raise ValueError("composite must be withheld when subgroups were excluded")
+        if not scorecard.get("composite_reason"):
+            raise ValueError("excluded groups require a composite explanation")
+        return
     if not evidence:
         if scorecard["min_disparate_impact"] is not None:
             raise ValueError("minimum DI published with no group comparisons")
@@ -243,6 +251,7 @@ def benchmark_case(dataset: DemoDataset, repeats: int) -> dict:
         "min_disparate_impact": last_scorecard["min_disparate_impact"],
         "composite_score": last_scorecard["composite_score"],
         "composite_reason": last_scorecard["composite_reason"],
+        "excluded_subgroups": last_scorecard["excluded_subgroups"],
         "heldout_mitigation": last_scorecard["measured_mitigation"],
         "timing_ms": {
             name: {
@@ -320,6 +329,11 @@ def render_markdown(report: dict) -> str:
                 f"{di_text} | {_interval_label(group['di_ci'])} | "
                 f"{'Supported' if group['eo_supported'] else 'Not assessed'} | "
                 f"{reasons} |"
+            )
+        for excluded in result.get("excluded_subgroups", []):
+            notes.append(
+                f"**{result['key']} omitted cohort:** {excluded['attribute']}:"
+                f"{excluded['group_value']} (n={excluded['n']}) — {excluded['reason']}"
             )
         if result["di_coverage_reason"]:
             notes.append(

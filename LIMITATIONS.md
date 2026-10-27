@@ -122,3 +122,17 @@ Equalized Odds), and reserves statistical flags for valid confidence intervals.
 A point estimate below 0.80 is descriptive, **not automatically a statistically
 supported violation**. Conversely, no flag may mean inconclusive evidence rather
 than a clean result. The Model Card and PDF explicitly distinguish these states.
+
+
+## 16. Excluded cohorts cannot silently disappear from overall summaries
+The hosted agent omits extremely small (<30-row) subgroups from direct
+comparison. When any such subgroup is excluded, the overall minimum DI and
+three-metric composite are withheld rather than computed from a selected subset.
+Available per-comparison findings are still shown. This avoids implying a
+full-population fairness assessment based only on the larger groups.
+
+## 17. Threshold crossings in mitigation are point estimates
+A mitigation's reported before/after improvement is measured on held-out rows
+when available, but the UI's "crosses 0.80" label only refers to the **point
+estimate**. It is not a confidence-qualified threshold crossing, proof of
+generalization to deployment, or clearance under any regulatory standard.

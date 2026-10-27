@@ -94,7 +94,7 @@ def execute_plan(plan: AuditPlan, data: pd.DataFrame, direction: OutcomeDirectio
         for attr in plan.protected_attribute_columns
     ]
 
-    return run_audit(
+    result = run_audit(
         model,
         working,
         specs,
@@ -102,6 +102,24 @@ def execute_plan(plan: AuditPlan, data: pd.DataFrame, direction: OutcomeDirectio
         feature_columns=plan.feature_columns,
         compute_ci=True,
     )
+    if plan.excluded_subgroups:
+        # Stage 2 omits tiny groups from per-comparison metrics. Publishing a
+        # minimum over only the remaining groups would cherry-pick the population.
+        # Keep valid per-comparison findings/flags, but withhold both all-group
+        # headlines whenever any category was deliberately omitted.
+        result.min_di = None
+        result.composite_score = None
+        result.composite_band = None
+        result.metadata["composite_complete"] = False
+        result.metadata["composite_reason"] = (
+            "An overall score cannot cover every observed subgroup because "
+            "the audit excluded one or more groups below the minimum size."
+        )
+        result.metadata["min_di_reason"] = (
+            "Overall Disparate Impact withheld: at least one subgroup "
+            "was excluded from comparison for insufficient sample size."
+        )
+    return result
 
 
 def measure_top_mitigation(

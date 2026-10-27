@@ -240,3 +240,39 @@ def test_report_includes_cohort_evidence_reason_and_ci() -> None:
     assert "[0.490, 0.670] (95%, bootstrap-bca)" in text
     assert "Ground-truth labels are unavailable" in text
     assert "composite unavailable" in text
+
+
+def test_excluded_cohort_prevents_selective_aggregate_even_with_eligible_groups() -> None:
+    from scripts.benchmark_agent import validate_coverage
+
+    one = {
+        "group_label": "race:B",
+        "privileged_value": "A",
+        "unprivileged_value": "B",
+        "n_privileged": 240,
+        "n_unprivileged": 240,
+        "flagged": False,
+        "metrics": {
+            "disparate_impact": {"value": 0.8, "classification": "PASS"},
+            "spd": {"value": -0.1, "classification": "Acceptable"},
+            "equalized_odds": {"value": 0.03, "classification": "Acceptable"},
+        },
+    }
+    from scripts.benchmark_agent import describe_group_evidence
+
+    evidence = describe_group_evidence([one])
+    scorecard = {
+        "excluded_subgroups": [
+            {"attribute": "race", "group_value": "C", "n": 12, "reason": "Too small"}
+        ],
+        "min_disparate_impact": 0.8,
+        "composite_score": 0.9,
+    }
+    with pytest.raises(ValueError, match="minimum DI must be withheld"):
+        validate_coverage(scorecard, evidence)
+    scorecard["min_disparate_impact"] = None
+    with pytest.raises(ValueError, match="composite must be withheld"):
+        validate_coverage(scorecard, evidence)
+    scorecard["composite_score"] = None
+    scorecard["composite_reason"] = "Subgroup C excluded."
+    validate_coverage(scorecard, evidence)
