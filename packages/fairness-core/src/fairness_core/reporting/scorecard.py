@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 
 from fairness_core.types import (
     AuditResult,
-    Classification,
     GroupAuditResult,
     MetricName,
 )
