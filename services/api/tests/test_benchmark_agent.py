@@ -247,9 +247,10 @@ def test_excluded_cohort_prevents_selective_aggregate_even_with_eligible_groups(
 
     one = {
         "group_label": "race:B",
-        "reference_group": "A",
-        "reference_rows": 240,
-        "comparison_rows": 240,
+        "privileged_value": "A",
+        "unprivileged_value": "B",
+        "n_privileged": 240,
+        "n_unprivileged": 240,
         "flagged": False,
         "metrics": {
             "disparate_impact": {"value": 0.8, "classification": "PASS"},
