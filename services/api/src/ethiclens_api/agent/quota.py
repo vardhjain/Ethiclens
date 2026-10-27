@@ -1,7 +1,7 @@
 """Daily LLM call budget: a hard stop with graceful degradation, not an error page.
 
-Each outbound attempt is reserved atomically before invoking a provider. Once the daily cap is hit, callers
-should degrade (numeric-only narrative, "Q&A unavailable", 429 on schema inference)
+Each outbound attempt is reserved atomically before a provider call. Once the cap
+is hit, callers should degrade (numeric-only narrative, "Q&A unavailable", 429 on schema inference)
 rather than let costs run past a free-tier quota.
 """
 
