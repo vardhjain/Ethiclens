@@ -74,6 +74,117 @@ def validate_evidence(dataset: DemoDataset, data: pd.DataFrame, scorecard: dict)
             )
 
 
+def _metric_supported(metric: dict | None) -> bool:
+    """A diagnostic point estimate is not sufficient statistical evidence."""
+    return (
+        metric is not None
+        and metric.get("value") is not None
+        and metric.get("classification") != "INSUFFICIENT_DATA"
+    )
+
+
+def _missing_reason(metric: dict | None) -> str | None:
+    if _metric_supported(metric):
+        return None
+    if metric is None:
+        return "Metric was not produced."
+    return metric.get("details", {}).get("reason") or "Insufficient metric evidence."
+
+
+def describe_group_evidence(groups: list[dict]) -> list[dict]:
+    """Preserve per-group availability, reasons and bootstrap CI provenance.
+
+    Unlike group point estimates, supported values must pass the engine's
+    evidence floors. Underpowered diagnostic point estimates remain separate.
+    """
+    evidence = []
+    for group in groups:
+        metrics = group["metrics"]
+        di = metrics.get("disparate_impact")
+        spd = metrics.get("spd")
+        eo = metrics.get("equalized_odds")
+        di_supported = _metric_supported(di)
+        eo_supported = _metric_supported(eo)
+        spd_supported = _metric_supported(spd)
+        di_interval = di.get("ci") if di_supported and di is not None else None
+        eo_interval = eo.get("ci") if eo_supported and eo is not None else None
+        evidence.append(
+            {
+                "group_label": group["group_label"],
+                "reference_group": group["privileged_value"],
+                "comparison_group": group["unprivileged_value"],
+                "reference_rows": group["n_privileged"],
+                "comparison_rows": group["n_unprivileged"],
+                "flagged": bool(group["flagged"]),
+                "di_supported": di_supported,
+                "di_value": di["value"] if di_supported and di is not None else None,
+                "di_raw_point_estimate": di.get("value") if di is not None else None,
+                "di_ci": di_interval,
+                "di_classification": di.get("classification") if di is not None else None,
+                "di_reason": _missing_reason(di),
+                "spd_supported": spd_supported,
+                "spd_reason": _missing_reason(spd),
+                "eo_supported": eo_supported,
+                "eo_value": eo["value"] if eo_supported and eo is not None else None,
+                "eo_raw_point_estimate": eo.get("value") if eo is not None else None,
+                "eo_ci": eo_interval,
+                "eo_classification": eo.get("classification") if eo is not None else None,
+                "eo_reason": _missing_reason(eo),
+                "composite_eligible": di_supported and spd_supported and eo_supported,
+            }
+        )
+    return evidence
+
+
+def validate_coverage(scorecard: dict, evidence: list[dict]) -> None:
+    """Fail CI when a headline hides an excluded cohort or selects a subset."""
+    if not evidence:
+        if scorecard["min_disparate_impact"] is not None:
+            raise ValueError("minimum DI published with no group comparisons")
+        if scorecard["composite_score"] is not None:
+            raise ValueError("composite published with no group comparisons")
+        return
+    supported = [g["di_value"] for g in evidence if g["di_supported"]]
+    full_di = len(supported) == len(evidence)
+    reported_di = scorecard["min_disparate_impact"]
+    if not full_di and reported_di is not None:
+        raise ValueError("minimum DI must be withheld when a cohort is underpowered")
+    if full_di and (reported_di is None or abs(reported_di - min(supported)) > 1e-8):
+        raise ValueError("minimum DI does not cover all supported cohorts")
+
+    full_composite = all(g["composite_eligible"] for g in evidence)
+    if (scorecard["composite_score"] is not None) != full_composite:
+        raise ValueError("composite availability contradicts per-cohort evidence")
+    if not full_composite and not scorecard.get("composite_reason"):
+        raise ValueError("unavailable composite must include an explanation")
+
+
+def _interval_label(interval: dict | None) -> str:
+    if interval is None:
+        return "Unavailable"
+    low = interval.get("low")
+    high = interval.get("high")
+    level = interval.get("level")
+    if low is None or high is None or level is None:
+        return "Unavailable"
+    if not (0 < level < 1 and low <= high):
+        raise ValueError("invalid confidence interval metadata")
+    method = interval.get("method") or "unspecified method"
+    return f"[{low:.3f}, {high:.3f}] ({level:.0%}, {method})"
+
+
+def _coverage_reason(evidence: list[dict], metric: str) -> str | None:
+    if not evidence:
+        return "No group comparisons were produced."
+    omitted = sum(not g[f"{metric}_supported"] for g in evidence)
+    if omitted:
+        return (
+            f"{omitted} of {len(evidence)} group comparisons have insufficient "
+            f"{metric.upper()} evidence; see cohort-level reasons below."
+        )
+    return None
+
+
 def benchmark_case(dataset: DemoDataset, repeats: int) -> dict:
     if repeats < 1:
         raise ValueError("repeats must be at least 1")
@@ -108,20 +219,8 @@ def benchmark_case(dataset: DemoDataset, repeats: int) -> dict:
         last_data = frame
 
     assert last_data is not None
-    group_evidence = [
-        {
-            "group_label": g["group_label"],
-            "reference_rows": g["n_privileged"],
-            "comparison_rows": g["n_unprivileged"],
-            "flagged": g["flagged"],
-            "di_value": (g["metrics"].get("disparate_impact") or {}).get("value"),
-            "di_ci": (g["metrics"].get("disparate_impact") or {}).get("ci"),
-            "di_classification": (g["metrics"].get("disparate_impact") or {}).get("classification"),
-            "eo_value": (g["metrics"].get("equalized_odds") or {}).get("value"),
-            "eo_classification": (g["metrics"].get("equalized_odds") or {}).get("classification"),
-        }
-        for g in last_scorecard["groups"]
-    ]
+    group_evidence = describe_group_evidence(last_scorecard["groups"])
+    validate_coverage(last_scorecard, group_evidence)
     output = {
         "key": dataset.key,
         "title": dataset.title,
@@ -131,10 +230,10 @@ def benchmark_case(dataset: DemoDataset, repeats: int) -> dict:
         "positive_is_favorable": dataset.proposal.outcome_direction.positive_is_favorable,
         "continuous_score_available": dataset.proposal.score_column is not None,
         "cohort_comparisons": len(last_scorecard["groups"]),
-        "computable_di_cohorts": sum(
-            g["di_value"] is not None and g["di_classification"] != "INSUFFICIENT_DATA"
-            for g in group_evidence
-        ),
+        "computable_di_cohorts": sum(g["di_supported"] for g in group_evidence),
+        "computable_eo_cohorts": sum(g["eo_supported"] for g in group_evidence),
+        "composite_eligible_cohorts": sum(g["composite_eligible"] for g in group_evidence),
+        "di_coverage_reason": _coverage_reason(group_evidence, "di"),
         "group_evidence": group_evidence,
         "flagged_cohorts": sum(bool(g["flagged"]) for g in last_scorecard["groups"]),
         "inconclusive_cohorts": sum(
@@ -188,6 +287,48 @@ def render_markdown(report: dict) -> str:
             f"{result['computable_di_cohorts']} / {result['cohort_comparisons']} | "
             f"{measured} | {result['timing_ms']['total_ms']['median']:.0f} ms |"
         )
+    rows.extend(
+        [
+            "",
+            "## Per-cohort evidence and confidence intervals",
+            "",
+            "| Dataset | Comparison (reference → cohort) | n (ref / cohort) | "
+            "Supported DI | DI confidence interval | EO evidence | Exclusion reason |",
+            "|---|---|---:|---:|---|---|---|",
+        ]
+    )
+    notes: list[str] = []
+    for result in report["cases"]:
+        for group in result["group_evidence"]:
+            di_text = f"{group['di_value']:.3f}" if group["di_supported"] else "Not assessed"
+            reason_parts = []
+            if group["di_reason"]:
+                reason_parts.append(f"DI: {group['di_reason']}")
+            if group["spd_reason"]:
+                reason_parts.append(f"SPD: {group['spd_reason']}")
+            if group["eo_reason"]:
+                reason_parts.append(f"EO: {group['eo_reason']}")
+            reasons = "; ".join(reason_parts) if reason_parts else "None"
+            # Group names/reasons originate from reviewed demo inputs and the
+            # deterministic engine; escape table syntax in output.
+            reasons = reasons.replace("|", "\\|").replace("\\n", " ")
+            label = group["group_label"].replace("|", "\\|")
+            ref = group["reference_group"].replace("|", "\\|")
+            rows.append(
+                f"| {result['key']} | {label} (ref: {ref}) | "
+                f"{group['reference_rows']} / {group['comparison_rows']} | "
+                f"{di_text} | {_interval_label(group['di_ci'])} | "
+                f"{'Supported' if group['eo_supported'] else 'Not assessed'} | "
+                f"{reasons} |"
+            )
+        if result["di_coverage_reason"]:
+            notes.append(
+                f"**{result['key']} DI headline withheld:** {result['di_coverage_reason']}"
+            )
+        if result["composite_reason"]:
+            notes.append(f"**{result['key']} composite unavailable:** {result['composite_reason']}")
+
+    rows.extend(["", "## Headline availability", "", *notes, ""])
     rows += [
         "",
         "Timings are measured end-to-end on the current runner, include the "
@@ -196,10 +337,14 @@ def render_markdown(report: dict) -> str:
         "p95 latency, inference accuracy, dollar cost, or fairness improvement "
         "can be inferred from them.",
         "",
-        "The minimum DI is only published when **every** cohort comparison has "
-        "sufficient DI evidence. The separate three-metric composite may still "
-        "be unavailable when Equalized Odds is missing or underpowered. "
-        "See group_evidence and composite_reason for the exact scope.",
+        "Only cohorts meeting the deterministic minimum-sample policy receive "
+        "a supported DI estimate (100 reference and 100 comparison rows), and "
+        "Equalized Odds needs 30 positive and 30 negative labels on BOTH sides. "
+        "CIs are the fairness engine's per-cohort bootstrap intervals, not CIs "
+        "for the all-groups minimum, and can be unavailable independently of a "
+        "supported point estimate. A metric point estimate for an underpowered "
+        "cohort is diagnostic only; it must never be treated as a finding. "
+        "The overall minimum DI requires every comparison to be eligible.",
         "",
         "See `evidence.json` for source-file SHA-256 hashes, per-stage median/min/max "
         "timings and each dataset's actual held-out mitigation fields. Null values "
@@ -211,7 +356,7 @@ def render_markdown(report: dict) -> str:
 
 def run(repeats: int) -> dict:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "purpose": "offline deterministic-agent evaluation, not LLM evaluation",
         "repeats": repeats,
         "environment": {

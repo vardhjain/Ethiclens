@@ -180,8 +180,20 @@ runs all three bundled demonstration datasets through the **same deterministic
 planning, fairness calculation, mitigation, and scorecard code used by the API**.
 It produces a downloadable `evidence.json` (dataset SHA-256 fingerprints,
 availability/insufficiency flags, measured mitigation, and per-stage timings)
-and a short Markdown report. The benchmark independently recomputes group
-selection-rate ratios directly from each CSV to detect polarity mistakes.
+and a short Markdown report with a **per-cohort evidence table**: sample
+sizes, supported DI values, original bootstrap confidence intervals (with
+method/level), Equalized Odds eligibility, and explicit reasons for insufficient
+evidence. The benchmark independently recomputes group selection-rate ratios
+directly from each CSV to detect polarity mistakes and checks that incomplete
+cohort coverage cannot produce a misleading aggregate.
+
+The report distinguishes a *diagnostic raw point estimate* from an adequately
+supported comparison. The former is retained in JSON for reproducibility but
+never displayed as valid evidence; an absent interval is labeled unavailable.
+The cohort confidence intervals are not simultaneous confidence intervals for
+the minimum across all groups. Reference-group self-comparisons are excluded
+even after filtering small subgroups, so tautological 1.0 ratios cannot
+inflate the coverage denominator.
 
 Reproduce it locally with Python 3.12 and `uv` (no network after installation):
 

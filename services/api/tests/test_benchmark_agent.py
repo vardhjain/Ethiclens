@@ -6,7 +6,13 @@ import json
 
 import pandas as pd
 import pytest
-from scripts.benchmark_agent import render_markdown, validate_evidence
+from scripts.benchmark_agent import (
+    _interval_label,
+    describe_group_evidence,
+    render_markdown,
+    validate_coverage,
+    validate_evidence,
+)
 
 from ethiclens_api.agent.demo_datasets import DEMO_DATASETS
 
@@ -74,6 +80,22 @@ def test_markdown_discloses_unavailable_measurements() -> None:
                 "flagged_cohorts": 1,
                 "cohort_comparisons": 1,
                 "computable_di_cohorts": 0,
+                "di_coverage_reason": "1 of 1 group comparisons have insufficient DI evidence.",
+                "group_evidence": [
+                    {
+                        "group_label": "race:B",
+                        "reference_group": "A",
+                        "reference_rows": 80,
+                        "comparison_rows": 20,
+                        "di_supported": False,
+                        "di_value": None,
+                        "di_ci": None,
+                        "di_reason": "Requires 100 rows in each group.",
+                        "spd_reason": "Requires 100 rows in each group.",
+                        "eo_supported": False,
+                        "eo_reason": "No true labels.",
+                    }
+                ],
                 "min_disparate_impact": None,
                 "composite_reason": "Ground-truth labels absent.",
                 "heldout_mitigation": None,
@@ -86,3 +108,135 @@ def test_markdown_discloses_unavailable_measurements() -> None:
     assert "not available" in text
     assert "not comparable" in text
     assert json.dumps(report)
+
+
+def _group(*, di: dict, eo: dict | None = None, spd: dict | None = None) -> dict:
+    return {
+        "group_label": "race:B",
+        "privileged_value": "A",
+        "unprivileged_value": "B",
+        "n_privileged": 300,
+        "n_unprivileged": 300,
+        "flagged": False,
+        "metrics": {
+            "disparate_impact": di,
+            "spd": spd or {"value": -0.1, "classification": "FLAGGED"},
+            "equalized_odds": eo
+            or {
+                "value": None,
+                "classification": "INSUFFICIENT_DATA",
+                "details": {"reason": "Ground-truth labels are unavailable."},
+            },
+        },
+    }
+
+
+def test_coverage_preserves_raw_underpowered_value_but_hides_supported_di() -> None:
+    group = _group(
+        di={
+            "value": 0.45,
+            "classification": "INSUFFICIENT_DATA",
+            "details": {"reason": "At least 100 people per group required."},
+            "ci": {"low": 0.35, "high": 0.55, "level": 0.95},
+        }
+    )
+    evidence = describe_group_evidence([group])
+    assert evidence[0]["di_raw_point_estimate"] == 0.45
+    assert evidence[0]["di_value"] is None
+    assert evidence[0]["di_ci"] is None
+    assert "100 people" in evidence[0]["di_reason"]
+    with pytest.raises(ValueError, match="underpowered"):
+        validate_coverage(
+            {"min_disparate_impact": 0.45, "composite_score": None},
+            evidence,
+        )
+    validate_coverage(
+        {
+            "min_disparate_impact": None,
+            "composite_score": None,
+            "composite_reason": "Underpowered DI.",
+        },
+        evidence,
+    )
+
+
+def test_complete_di_with_incomplete_eo_keeps_only_di_headline() -> None:
+    interval = {"low": 0.49, "high": 0.67, "level": 0.95, "method": "bootstrap-bca"}
+    group = _group(di={"value": 0.56, "classification": "FAIL", "ci": interval})
+    evidence = describe_group_evidence([group])
+    assert evidence[0]["di_value"] == 0.56
+    assert evidence[0]["di_ci"] == interval
+    assert _interval_label(interval) == "[0.490, 0.670] (95%, bootstrap-bca)"
+    assert evidence[0]["eo_reason"] == "Ground-truth labels are unavailable."
+    validate_coverage(
+        {
+            "min_disparate_impact": 0.56,
+            "composite_score": None,
+            "composite_reason": "Missing ground truth.",
+        },
+        evidence,
+    )
+    with pytest.raises(ValueError, match="does not cover"):
+        validate_coverage(
+            {"min_disparate_impact": 0.60, "composite_score": None},
+            evidence,
+        )
+
+
+def test_metric_coverage_rejects_false_composite_and_missing_explanation() -> None:
+    group = _group(di={"value": 0.8, "classification": "PASS"})
+    evidence = describe_group_evidence([group])
+    with pytest.raises(ValueError, match="availability"):
+        validate_coverage(
+            {"min_disparate_impact": 0.8, "composite_score": 0.99},
+            evidence,
+        )
+    with pytest.raises(ValueError, match="explanation"):
+        validate_coverage(
+            {"min_disparate_impact": 0.8, "composite_score": None},
+            evidence,
+        )
+
+
+def test_report_includes_cohort_evidence_reason_and_ci() -> None:
+    report = {
+        "environment": {"python": "3.12", "pandas": "2.2", "scikit_learn": "1.5"},
+        "repeats": 1,
+        "cases": [
+            {
+                "key": "synthetic_hiring",
+                "rows": 600,
+                "labels_available": False,
+                "positive_is_favorable": True,
+                "flagged_cohorts": 1,
+                "cohort_comparisons": 1,
+                "computable_di_cohorts": 1,
+                "di_coverage_reason": None,
+                "min_disparate_impact": 0.56,
+                "composite_reason": "Ground truth unavailable.",
+                "heldout_mitigation": None,
+                "timing_ms": {"total_ms": {"median": 80.0}},
+                "group_evidence": describe_group_evidence(
+                    [
+                        _group(
+                            di={
+                                "value": 0.56,
+                                "classification": "FAIL",
+                                "ci": {
+                                    "low": 0.49,
+                                    "high": 0.67,
+                                    "level": 0.95,
+                                    "method": "bootstrap-bca",
+                                },
+                            }
+                        )
+                    ]
+                ),
+            }
+        ],
+    }
+    text = render_markdown(report)
+    assert "race:B (ref: A)" in text
+    assert "[0.490, 0.670] (95%, bootstrap-bca)" in text
+    assert "Ground-truth labels are unavailable" in text
+    assert "composite unavailable" in text
