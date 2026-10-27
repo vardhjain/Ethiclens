@@ -90,8 +90,7 @@ async def check_integrity(
 ) -> IntegrityOut:
     obj = await db.get(AuditSession, session_id)
     if obj is None or (
-        obj.owner_id != user.id
-        and user.role not in (UserRole.GOVERNANCE_APPROVER, UserRole.ADMIN)
+        obj.owner_id != user.id and user.role not in (UserRole.GOVERNANCE_APPROVER, UserRole.ADMIN)
     ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
     if not obj.locked or obj.status != SessionStatus.SIGNED_OFF:
