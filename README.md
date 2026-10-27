@@ -83,7 +83,7 @@ reputational exposure when those models discriminate. Existing tools force a tra
 | **EthicLens** | ✅ | ✅ **executable + measured** | ✅ sign-off + audit trail | ✅ |
 
 EthicLens closes the loop from *"this model is biased"* to *"here is a measured fix and a
-signed, immutable audit record."*
+signed-off record with a verifiable SHA-256 snapshot fingerprint (not an external immutable ledger)."*
 
 ## What makes it trustworthy
 
