@@ -5,14 +5,26 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
+
+from ethiclens_api.config import get_settings
+from ethiclens_api.main import create_app
 
 _GOLDEN = Path(__file__).resolve().parents[3] / "models" / "golden" / "calibrated_bias_model.pkl"
 
 
-async def test_upload_rejects_unsupported_type(client: AsyncClient, auth) -> None:
-    headers = await auth(client)
-    resp = await client.post(
+@pytest.fixture
+async def trusted_client(client: AsyncClient, monkeypatch):
+    """Opt in solely in integration tests, with known trusted model files."""
+    monkeypatch.setattr(get_settings(), "enable_model_file_ingestion", True)
+    transport = ASGITransport(app=create_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as enabled:
+        yield enabled
+
+
+async def test_upload_rejects_unsupported_type(trusted_client: AsyncClient, auth) -> None:
+    headers = await auth(trusted_client)
+    resp = await trusted_client.post(
         "/api/models/upload",
         headers=headers,
         files={"file": ("data.csv", b"a,b,c\n1,2,3\n", "text/csv")},
@@ -22,9 +34,9 @@ async def test_upload_rejects_unsupported_type(client: AsyncClient, auth) -> Non
 
 
 @pytest.mark.skipif(not _GOLDEN.exists(), reason="golden model not built")
-async def test_upload_and_audit_golden_model(client: AsyncClient, auth) -> None:
-    headers = await auth(client)
-    upload = await client.post(
+async def test_upload_and_audit_golden_model(trusted_client: AsyncClient, auth) -> None:
+    headers = await auth(trusted_client)
+    upload = await trusted_client.post(
         "/api/models/upload",
         headers=headers,
         files={"file": ("calibrated_bias_model.pkl", _GOLDEN.read_bytes(), "application/octet")},
@@ -34,7 +46,7 @@ async def test_upload_and_audit_golden_model(client: AsyncClient, auth) -> None:
     assert model["framework"] == "sklearn"
     model_id = model["id"]
 
-    create = await client.post(
+    create = await trusted_client.post(
         "/api/sessions/create",
         headers=headers,
         json={
@@ -47,9 +59,9 @@ async def test_upload_and_audit_golden_model(client: AsyncClient, auth) -> None:
         },
     )
     session_id = create.json()["id"]
-    await client.post(f"/api/sessions/{session_id}/run", headers=headers)
+    await trusted_client.post(f"/api/sessions/{session_id}/run", headers=headers)
 
-    metrics = await client.get(f"/api/sessions/{session_id}/metrics", headers=headers)
+    metrics = await trusted_client.get(f"/api/sessions/{session_id}/metrics", headers=headers)
     black = next(
         m
         for m in metrics.json()["metrics"]

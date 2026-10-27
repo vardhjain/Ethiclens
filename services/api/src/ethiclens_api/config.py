@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # When true, audits run in-process instead of via the arq worker (dev/tests).
     eager_tasks: bool = True
 
+    # Not sandboxed: only enable for trusted model files in local environments.
+    # Public deployments must never execute user-supplied pickle/joblib files.
+    enable_model_file_ingestion: bool = False
     max_model_upload_mb: int = 512
     ingestion_sandbox_timeout_seconds: int = 60
     model_storage_dir: str = "./models/uploaded"
