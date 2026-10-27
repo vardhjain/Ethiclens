@@ -42,7 +42,6 @@ def test_openapi_verifier_requires_model_upload_routes_to_be_absent() -> None:
         validate_openapi({"paths": []})
 
 
-
 def test_cloudrun_deploy_is_manual_only_and_requires_explicit_confirmation() -> None:
     """Normal code pushes must never launch cloud builds in portfolio mode."""
     repo_root = Path(__file__).resolve().parents[3]
