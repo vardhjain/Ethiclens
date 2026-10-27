@@ -7,6 +7,11 @@ import json
 import time
 
 from httpx import AsyncClient
+from sqlalchemy import select
+
+from ethiclens_api.agent.quota import llm_calls_remaining, user_llm_calls_remaining
+from ethiclens_api.db import SessionLocal
+from ethiclens_api.models import UserAccount
 
 import ethiclens_api.routers.agent as agent_router
 
@@ -625,3 +630,46 @@ async def test_ask_returns_503_when_all_llm_providers_fail(
         json={"question": "Anything?"},
     )
     assert resp.status_code == 503
+
+
+async def test_schema_failure_counts_both_json_attempts_and_denies_next_call(
+    client: AsyncClient, auth, monkeypatch
+) -> None:
+    _patch_llm_always_failing(monkeypatch)
+    monkeypatch.setattr(agent_router.get_settings(), "agent_daily_llm_call_cap", 2)
+    headers = await auth(client)
+    first = await client.post(
+        "/api/agent/propose-schema",
+        headers=headers,
+        files={"file": ("data.csv", _CSV, "text/csv")},
+    )
+    assert first.status_code == 503  # two malformed JSON responses exhausted retries
+    async with SessionLocal() as db:
+        assert await llm_calls_remaining(db, daily_cap=2) == 0
+        user = (await db.execute(select(UserAccount))).scalar_one()
+        assert await user_llm_calls_remaining(db, user.id, daily_cap=20) == 18
+
+    denied = await client.post(
+        "/api/agent/propose-schema",
+        headers=headers,
+        files={"file": ("data.csv", _CSV, "text/csv")},
+    )
+    assert denied.status_code == 429
+
+
+async def test_partial_narrative_budget_degrades_after_failed_retry(
+    client: AsyncClient, auth, monkeypatch
+) -> None:
+    _patch_llm_always_failing(monkeypatch)
+    monkeypatch.setattr(agent_router.get_settings(), "agent_daily_llm_call_cap", 1)
+    headers = await auth(client)
+    response = await client.post(
+        "/api/agent/run-audit",
+        headers=headers,
+        files={"file": ("data.csv", _CSV, "text/csv")},
+        data={"proposal_json": json.dumps(_PROPOSAL)},
+    )
+    assert response.status_code == 201
+    assert response.json()["degraded"] is True
+    async with SessionLocal() as db:
+        assert await llm_calls_remaining(db, daily_cap=1) == 0
