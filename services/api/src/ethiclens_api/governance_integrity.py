@@ -56,10 +56,10 @@ async def snapshot_digest(
     related: dict[str, list[dict[str, Any]]] = {}
     for model in (ProtectedAttribute, FairnessMetric, MitigationLog):
         rows = (
-            await db.execute(
-                select(model).where(model.session_id == obj.id).order_by(model.id)
-            )
-        ).scalars().all()
+            (await db.execute(select(model).where(model.session_id == obj.id).order_by(model.id)))
+            .scalars()
+            .all()
+        )
         related[model.__tablename__] = [_columns(row) for row in rows]
 
     snapshot = {"session": _columns(obj, changes), "related": related}
