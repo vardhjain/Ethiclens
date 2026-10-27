@@ -10,6 +10,7 @@ from scripts.benchmark_agent import render_markdown, validate_evidence
 
 from ethiclens_api.agent.demo_datasets import DEMO_DATASETS
 
+
 def _scorecard(*, di: float = 0.5, measured: object = None) -> dict:
     return {
         "has_labels": False,
