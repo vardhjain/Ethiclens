@@ -125,9 +125,9 @@ async def test_atomic_reservation_never_oversubscribes_global_cap(db_session: As
     results = await asyncio.gather(*(claim(users[i % 3]) for i in range(20)))
     assert sum(results) == 7
     assert await llm_calls_remaining(db_session, daily_cap=7) == 0
-    total_users = sum(
-        50 - await user_llm_calls_remaining(db_session, user, daily_cap=50) for user in users
-    )
+    total_users = 0
+    for user in users:
+        total_users += 50 - await user_llm_calls_remaining(db_session, user, daily_cap=50)
     assert total_users == 7
 
 
