@@ -150,9 +150,8 @@ def validate_coverage(scorecard: dict, evidence: list[dict]) -> None:
     reported_di = scorecard["min_disparate_impact"]
     if not full_di and reported_di is not None:
         raise ValueError("minimum DI must be withheld when a cohort is underpowered")
-    if full_di:
-        if reported_di is None or abs(reported_di - min(supported)) > 1e-8:
-            raise ValueError("minimum DI does not cover all supported cohorts")
+    if full_di and (reported_di is None or abs(reported_di - min(supported)) > 1e-8):
+        raise ValueError("minimum DI does not cover all supported cohorts")
 
     full_composite = all(g["composite_eligible"] for g in evidence)
     if (scorecard["composite_score"] is not None) != full_composite:
