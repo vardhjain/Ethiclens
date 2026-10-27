@@ -53,7 +53,7 @@ def test_cloudrun_deploy_is_manual_only_and_requires_explicit_confirmation() -> 
     assert "  schedule:" not in trigger_block
     assert "confirm_deploy:" in trigger_block
     assert 'if [[ "$CONFIRM_DEPLOY" != "DEPLOY" ]]' in workflow
-    assert 'if [[ "$GITHUB_REF" != \'refs/heads/main\' ]]' in workflow
+    assert "if [[ \"$GITHUB_REF\" != 'refs/heads/main' ]]" in workflow
     assert "GCP_WORKLOAD_IDENTITY_PROVIDER" in workflow
     assert "Refuse deployment of a superseded commit" in workflow
     assert "Verify deployed SHA and public security posture" in workflow
