@@ -1,18 +1,7 @@
 name: deploy-api
 
-# Automates the "Redeploying after code changes" step from DEPLOYMENT.md #2:
-# `gcloud run deploy ethiclens-api --source .` on every push to main that
-# touches the API's source. No --set-env-vars here on purpose — Cloud Run
-# keeps whatever env vars/secrets were set on the service already (see
-# DEPLOYMENT.md #2), so this workflow only needs permission to *deploy*, never
-# DATABASE_URL/SECRET_KEY/*_API_KEY themselves.
-#
-# Requires one-time GCP setup (Workload Identity Federation, no long-lived key
-# stored in GitHub) — see the "GitHub Actions auto-deploy" section in
-# DEPLOYMENT.md. Until GCP_WORKLOAD_IDENTITY_PROVIDER / GCP_SERVICE_ACCOUNT /
-# GCP_PROJECT_ID repo variables are set, this workflow no-ops (same pattern as
-# keep-alive.yml) — safe to merge before that setup is done.
-
+# A successful workflow must mean a real Cloud Run rollout AND verified revision.
+# Missing repository variables are an actionable FAILURE, never a green no-op.
 on:
   push:
     branches: [main]
@@ -21,34 +10,71 @@ on:
       - "packages/fairness-core/**"
       - "Dockerfile"
       - "infra/docker/entrypoint-cloudrun.sh"
+      - "ml/**"
+      - "models/**"
       - "uv.lock"
       - "pyproject.toml"
+      - "scripts/verify_cloudrun_deployment.py"
       - ".github/workflows/deploy-api.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
-  id-token: write # required for Workload Identity Federation
+  id-token: write # short-lived Workload Identity Federation credentials
+
+# Never deploy a newer commit and then overwrite it with an older pending run.
+concurrency:
+  group: ethiclens-cloudrun-api
+  cancel-in-progress: false
 
 jobs:
   deploy:
+    name: Deploy and verify Cloud Run revision
     runs-on: ubuntu-latest
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+      API_URL: ${{ vars.API_URL }}
     steps:
-      - name: Check deploy config is present
-        id: configured
+      - name: Require main branch and cloud deployment configuration
+        shell: bash
         run: |
-          if [ -z "${{ vars.GCP_PROJECT_ID }}" ] || [ -z "${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}" ] || [ -z "${{ vars.GCP_SERVICE_ACCOUNT }}" ]; then
-            echo "GCP_PROJECT_ID / GCP_WORKLOAD_IDENTITY_PROVIDER / GCP_SERVICE_ACCOUNT repo variables are not set yet — skipping deploy. See DEPLOYMENT.md."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=true" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != 'refs/heads/main' ]]; then
+            echo "::error::Deploy only from main, not $GITHUB_REF"
+            exit 1
+          fi
+          missing=()
+          for key in GCP_PROJECT_ID GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
+            if [[ -z "${!key}" ]]; then
+              missing+=("$key")
+            fi
+          done
+          if (( ${#missing[@]} )); then
+            echo "::error title=Cloud Run was NOT deployed::Missing Actions variables: ${missing[*]}. See DEPLOYMENT.md (GitHub Actions auto-deploy)."
+            {
+              echo "### Deployment blocked — no changes published"
+              echo "Missing repository Actions variables: \`${missing[*]}\`."
+              echo "See [DEPLOYMENT.md](https://github.com/$GITHUB_REPOSITORY/blob/main/DEPLOYMENT.md#automatic-redeploys-via-github-actions-optional)."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
 
       - uses: actions/checkout@v4
-        if: steps.configured.outputs.ready == 'true'
+        with:
+          persist-credentials: false
+
+      - name: Embed Git commit in container source
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The root Dockerfile COPY services ./services includes this generated file.
+          # Unlike mutable service labels, this identifies the bytes built into the image.
+          printf '%s\n' "$GITHUB_SHA" > services/api/src/ethiclens_api/_deployment_revision
 
       - id: auth
-        if: steps.configured.outputs.ready == 'true'
         uses: google-github-actions/auth@v2
         with:
           project_id: ${{ vars.GCP_PROJECT_ID }}
@@ -56,17 +82,52 @@ jobs:
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - uses: google-github-actions/setup-gcloud@v2
-        if: steps.configured.outputs.ready == 'true'
+
+      - name: Confirm Cloud Run service exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run services describe ethiclens-api \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" >/dev/null
 
       - name: Deploy to Cloud Run
-        if: steps.configured.outputs.ready == 'true'
+        shell: bash
         run: |
+          set -euo pipefail
+          # Never overwrite existing DATABASE_URL, SECRET_KEY, or provider key bindings.
           gcloud run deploy ethiclens-api \
             --source . \
-            --region "${{ vars.GCP_REGION || 'us-central1' }}" \
-            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "$GCP_REGION" \
+            --project "$GCP_PROJECT_ID" \
             --quiet
 
-      - name: Smoke test /health
-        if: steps.configured.outputs.ready == 'true' && vars.API_URL != ''
-        run: curl -fsS --max-time 30 "${{ vars.API_URL }}/health"
+      - name: Resolve actual deployed service URL
+        id: service
+        shell: bash
+        run: |
+          set -euo pipefail
+          service_url="$(gcloud run services describe ethiclens-api \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+            --format='value(status.url)')"
+          if [[ -z "$service_url" ]]; then
+            echo "::error::Cloud Run did not return a service URL"
+            exit 1
+          fi
+          echo "url=$service_url" >> "$GITHUB_OUTPUT"
+
+      - name: Verify deployed SHA and public security posture
+        env:
+          SERVICE_URL: ${{ steps.service.outputs.url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify_cloudrun_deployment.py "$SERVICE_URL" "$GITHUB_SHA"
+          if [[ -n "$API_URL" ]]; then
+            python3 scripts/verify_cloudrun_deployment.py "$API_URL" "$GITHUB_SHA"
+          fi
+          {
+            echo "### Cloud Run deployment verified"
+            echo "Commit: \`$GITHUB_SHA\`"
+            echo "Service: $SERVICE_URL"
+            echo "Verified /health revision, OpenAPI route absence, and upload 404."
+          } >> "$GITHUB_STEP_SUMMARY"
