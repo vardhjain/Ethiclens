@@ -107,9 +107,12 @@ def _close_to_any(token: str, source_numbers: set[str]) -> bool:
         if token.endswith("%") and abs(value * 100 - target) <= _PCT_TOLERANCE:
             return True
         # Support a fraction from a source recorded on the 0-100 scale.
-        if not token.endswith("%") and 0 <= target <= 1:
-            if abs(value - target * 100) <= _PCT_TOLERANCE:
-                return True
+        if (
+            not token.endswith("%")
+            and 0 <= target <= 1
+            and abs(value - target * 100) <= _PCT_TOLERANCE
+        ):
+            return True
     return False
 
 
@@ -169,10 +172,13 @@ def is_explanation_grounded(text: str, scorecard: dict) -> bool:
     if incomplete and _PASS_RE.search(text):
         _log.warning("Grounding rejected an unsupported positive verdict")
         return False
-    if scorecard.get("measured_mitigation") is None:
-        if _MEASURED_RE.search(text) and not _NOT_MEASURED_RE.search(text):
-            _log.warning("Grounding rejected an unmeasured mitigation claim")
-            return False
+    if (
+        scorecard.get("measured_mitigation") is None
+        and _MEASURED_RE.search(text)
+        and not _NOT_MEASURED_RE.search(text)
+    ):
+        _log.warning("Grounding rejected an unmeasured mitigation claim")
+        return False
     if scorecard.get("has_labels") is False and _EO_COMPUTED_RE.search(text):
         _log.warning("Grounding rejected label-dependent metric claim")
         return False
