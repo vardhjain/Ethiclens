@@ -11,6 +11,7 @@ from ethiclens_api.agent.quota import (
     has_user_budget,
     llm_calls_remaining,
     record_llm_call,
+    reserve_llm_attempt,
     user_llm_calls_remaining,
 )
 from ethiclens_api.db import SessionLocal
@@ -90,3 +91,53 @@ async def test_record_llm_call_increments_both_global_and_user_counters(
     await record_llm_call(db_session, _USER)
     assert await llm_calls_remaining(db_session, daily_cap=5) == 4
     assert await user_llm_calls_remaining(db_session, _USER, daily_cap=5) == 4
+
+
+async def test_reservation_stops_at_both_caps(db_session: AsyncSession):
+    assert await reserve_llm_attempt(db_session, _USER, global_cap=2, user_cap=10)
+    assert await reserve_llm_attempt(db_session, _USER, global_cap=2, user_cap=10)
+    assert not await reserve_llm_attempt(db_session, _USER, global_cap=2, user_cap=10)
+    assert await llm_calls_remaining(db_session, daily_cap=2) == 0
+    assert await user_llm_calls_remaining(db_session, _USER, daily_cap=10) == 8
+
+
+async def test_user_denial_rolls_back_global_reservation(db_session: AsyncSession):
+    assert await reserve_llm_attempt(db_session, _USER, global_cap=5, user_cap=1)
+    assert not await reserve_llm_attempt(db_session, _USER, global_cap=5, user_cap=1)
+    assert await llm_calls_remaining(db_session, daily_cap=5) == 4
+    other = uuid4()
+    assert await reserve_llm_attempt(db_session, other, global_cap=5, user_cap=1)
+    assert await llm_calls_remaining(db_session, daily_cap=5) == 3
+
+
+async def test_zero_cap_denies_without_creating_counters(db_session: AsyncSession):
+    assert not await reserve_llm_attempt(db_session, _USER, global_cap=0, user_cap=9)
+    assert not await reserve_llm_attempt(db_session, _USER, global_cap=9, user_cap=0)
+    assert await llm_calls_remaining(db_session, daily_cap=9) == 9
+
+
+async def test_atomic_reservation_never_oversubscribes_global_cap(db_session: AsyncSession):
+    async def claim(user_id):
+        async with SessionLocal() as session:
+            return await reserve_llm_attempt(session, user_id, global_cap=7, user_cap=50)
+
+    users = [uuid4() for _ in range(3)]
+    results = await asyncio.gather(*(claim(users[i % 3]) for i in range(20)))
+    assert sum(results) == 7
+    assert await llm_calls_remaining(db_session, daily_cap=7) == 0
+    total_users = sum(
+        50 - await user_llm_calls_remaining(db_session, user, daily_cap=50)
+        for user in users
+    )
+    assert total_users == 7
+
+
+async def test_atomic_reservation_never_oversubscribes_user_cap(db_session: AsyncSession):
+    async def claim():
+        async with SessionLocal() as session:
+            return await reserve_llm_attempt(session, _USER, global_cap=50, user_cap=4)
+
+    results = await asyncio.gather(*(claim() for _ in range(12)))
+    assert sum(results) == 4
+    assert await llm_calls_remaining(db_session, daily_cap=50) == 46
+    assert await user_llm_calls_remaining(db_session, _USER, daily_cap=4) == 0
