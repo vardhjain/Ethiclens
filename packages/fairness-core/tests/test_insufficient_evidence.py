@@ -104,7 +104,7 @@ def test_unlabeled_audit_does_not_earn_perfect_equalized_odds_credit() -> None:
     assert eo.value is None
     assert result.composite_score is None
     assert result.composite_band is None
-    assert result.min_di == pytest.approx(120 / 280 / (360 / 400))
+    assert result.min_di == pytest.approx((120 / 400) / (360 / 400))
     assert "ground-truth" in result.metadata["composite_reason"]
     assert "not assessed" not in _verdict_text(result, 0.8).lower()
 
