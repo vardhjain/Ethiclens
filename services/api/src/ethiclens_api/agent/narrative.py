@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
-from ethiclens_api.agent.grounding import extract_source_numbers, is_grounded
+from ethiclens_api.agent.grounding import is_explanation_grounded
 from ethiclens_api.agent.llm_client import LLMClient, complete_json
 from ethiclens_api.agent.schemas import AuditPlan
 from fairness_core import AuditResult, Recommendation, get_recommendations
@@ -33,8 +33,8 @@ _SYSTEM_PROMPT = (
     "CRITICAL RULE: every number you write (percentages, ratios, scores, group sizes) must "
     "be copied from the JSON you were given, exactly or lightly rounded. Never compute, "
     "estimate, or invent a number that is not present in the input JSON. Never state a "
-    "regulatory conclusion (e.g. 'this fails the 80% rule') beyond what the JSON's "
-    "'flagged' fields already indicate — you may restate a flag, never derive a new one."
+    "regulatory conclusion beyond the JSON findings. Never claim legal or deployment "
+    "clearance. Do not describe projected mitigations as measured results."
 )
 
 
@@ -120,16 +120,16 @@ def _measured_mitigation_dict(mitigation: MitigationResult | None) -> dict | Non
 def generate_narrative(client: LLMClient, scorecard: dict) -> NarrativeResult:
     """Generate a grounded narrative for ``scorecard`` (from :func:`build_scorecard`)."""
     prompt = f"Scorecard JSON:\n{json.dumps(scorecard, default=str)}"
-    source_numbers = extract_source_numbers(json.dumps(scorecard, default=str))
 
     for _attempt in range(2):
         output = complete_json(client, _SYSTEM_PROMPT, prompt, NarrativeOutput)
         combined_text = f"{output.narrative} {output.mitigation_summary}"
-        if is_grounded(combined_text, source_numbers):
+        if is_explanation_grounded(combined_text, scorecard):
             return NarrativeResult(output=output, grounded=True, degraded=False)
         prompt = (
-            f"{prompt}\n\nYour previous narrative contained a number not present in the "
-            "scorecard JSON above. Rewrite it using ONLY numbers copied from that JSON."
+            f"{prompt}\n\nYour previous explanation failed an evidence check. "
+            "Use only sourced numbers, group labels and flagged states; never "
+            "imply legal clearance or measured mitigation without supporting evidence."
         )
 
     return unavailable_result(scorecard)
