@@ -74,7 +74,6 @@ def validate_evidence(dataset: DemoDataset, data: pd.DataFrame, scorecard: dict)
             )
 
 
-
 def _metric_supported(metric: dict | None) -> bool:
     """A diagnostic point estimate is not sufficient statistical evidence."""
     return (
@@ -300,11 +299,7 @@ def render_markdown(report: dict) -> str:
     )
     for result in report["cases"]:
         for group in result["group_evidence"]:
-            di_text = (
-                f"{group['di_value']:.3f}"
-                if group["di_supported"]
-                else "Not assessed"
-            )
+            di_text = f"{group['di_value']:.3f}" if group["di_supported"] else "Not assessed"
             reason_parts = []
             if group["di_reason"]:
                 reason_parts.append(f"DI: {group['di_reason']}")
@@ -329,9 +324,7 @@ def render_markdown(report: dict) -> str:
         if result["di_coverage_reason"]:
             rows.append(f"**{result['key']} DI headline withheld:** {result['di_coverage_reason']}")
         if result["composite_reason"]:
-            rows.append(
-                f"**{result['key']} composite unavailable:** {result['composite_reason']}"
-            )
+            rows.append(f"**{result['key']} composite unavailable:** {result['composite_reason']}")
         rows.append("")
 
     rows += [
