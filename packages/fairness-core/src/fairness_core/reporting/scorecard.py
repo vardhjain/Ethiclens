@@ -44,7 +44,7 @@ def _di_chart_png(result: AuditResult, threshold: float) -> bytes | None:
     groups, values, colors = [], [], []
     for g in result.groups:
         m = g.metric(MetricName.DISPARATE_IMPACT)
-        if m is None or not m.computable:
+        if m is None or m.value is None or not m.computable:
             continue
         groups.append(g.group_label)
         values.append(m.value)
