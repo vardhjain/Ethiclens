@@ -64,9 +64,7 @@ def test_qa_rejects_semantic_hallucination_and_recovers() -> None:
 
 
 def test_qa_rejects_legal_clearance_even_without_numbers() -> None:
-    client = _StubClient(
-        [_response("Legally compliant."), _response("Safe to deploy.")]
-    )
+    client = _StubClient([_response("Legally compliant."), _response("Safe to deploy.")])
     result = ask(client, _SCORECARD, "Can I deploy this model?")
     assert result.grounded is False
     assert result.degraded is True
