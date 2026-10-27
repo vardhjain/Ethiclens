@@ -42,14 +42,18 @@ async def test_legacy_model_session_cannot_run_or_mitigate(client: AsyncClient, 
     owner = UUID((await client.get("/api/auth/me", headers=headers)).json()["id"])
     async with SessionLocal() as db:
         model = UploadedModel(
-            owner_id=owner, filename="legacy.pkl", framework=ModelFramework.SKLEARN,
+            owner_id=owner,
+            filename="legacy.pkl",
+            framework=ModelFramework.SKLEARN,
             file_uri="/no/such/model.pkl",
         )
         db.add(model)
         await db.flush()
         session = AuditSession(
-            owner_id=owner, model_id=model.id,
-            dataset="synthetic", status=SessionStatus.DRAFT,
+            owner_id=owner,
+            model_id=model.id,
+            dataset="synthetic",
+            status=SessionStatus.DRAFT,
         )
         db.add(session)
         await db.commit()
@@ -59,7 +63,8 @@ async def test_legacy_model_session_cannot_run_or_mitigate(client: AsyncClient, 
     assert run.status_code == 403
     response = await client.post(
         f"/api/sessions/{session_id}/mitigate",
-        headers=headers, json={"strategy": "threshold_optimizer"},
+        headers=headers,
+        json={"strategy": "threshold_optimizer"},
     )
     assert response.status_code == 403
     async with SessionLocal() as db:
@@ -70,8 +75,13 @@ async def test_legacy_model_session_cannot_run_or_mitigate(client: AsyncClient, 
 def test_internal_worker_refuses_existing_model_file(monkeypatch) -> None:
     monkeypatch.setattr(get_settings(), "enable_model_file_ingestion", False)
     inputs = _AuditInputs(
-        dataset="synthetic", seed=42, model_uri="/no/such/model.pkl",
-        model_framework="sklearn", target="approved", feature_columns=[], specs=[],
+        dataset="synthetic",
+        seed=42,
+        model_uri="/no/such/model.pkl",
+        model_framework="sklearn",
+        target="approved",
+        feature_columns=[],
+        specs=[],
     )
     with pytest.raises(PermissionError, match="disabled"):
         _resolve_model(inputs, pd.DataFrame(), "approved", [])
