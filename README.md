@@ -96,9 +96,10 @@ signed, immutable audit record."*
    not seen, with error bars, and the reported improvement is the measured before/after
    difference. If something cannot be computed — for example an error-rate metric with no true
    outcomes — EthicLens says `INSUFFICIENT_DATA` rather than inventing a value.
-3. **Built with security and honesty in mind.** Uploaded model files are opened in an isolated
-   sandbox, because loading an untrusted model file can run arbitrary code. Every audit ships
-   with a Model Card, a Datasheet and a plain statement of
+3. **Built with security and honesty in mind.** Public model-file ingestion and execution
+   are disabled. Pickle/joblib loading is available only by explicit trusted-local opt-in;
+   a real sandbox is not yet implemented. Every audit ships with a Model Card,
+   a Datasheet and a plain statement of
    [what the tool does *not* prove](LIMITATIONS.md).
 
 ## ▶ Quickstart
@@ -205,7 +206,7 @@ flowchart TD
 (seconds-long jobs don't justify a distributed queue — `EAGER_TASKS=true` runs everything
 in-process, see `ethiclens_api/tasks.py`) and model-file uploads (predictions-only by design —
 a public endpoint accepting arbitrary model files is an attack surface the enterprise `/sessions`
-flow's sandbox exists to manage, not something to also expose here). Full deployment guide:
+flow is restricted to trusted local use, not something to expose publicly). Full deployment guide:
 [`DEPLOYMENT.md`](DEPLOYMENT.md).
 See [`LIMITATIONS.md`](LIMITATIONS.md#9-the-hosted-agent-is-a-demonstration-deployment-not-production-infrastructure)
 for what this deployment does not guarantee.
@@ -238,7 +239,7 @@ A three-tier system around one shared, audited fairness engine.
 ┌──────────────┐   REST/JSON    ┌────────────────────────┐   imports   ┌────────────────────┐
 │  React 18 UI │ ─────────────▶ │  FastAPI service       │ ──────────▶ │  fairness-core     │
 │  (Mantine)   │ ◀───────────── │  + arq async workers   │             │  (pure, mypy-strict│
-└──────────────┘   poll status  │  + sandboxed ingestion │             │   Fairlearn-proven)│
+└──────────────┘   poll status  │  + opt-in model loading │             │   Fairlearn-proven)│
                                  └───────────┬────────────┘             └────────────────────┘
                                              │  SQLAlchemy 2.0 (async)         ▲   imports
                                        ┌──────▼───────┐                  ┌─────┴──────┐
@@ -269,7 +270,7 @@ security scans (CodeQL, `pip-audit`, `npm audit`).
 | Path | What |
 |---|---|
 | `packages/fairness-core/` | ★ The audited metric + mitigation engine (zero web/db deps) |
-| `services/api/` | FastAPI app, async ORM, arq workers, sandboxed model ingestion |
+| `services/api/` | FastAPI app, async ORM, arq workers, opt-in trusted-local model ingestion |
 | `services/api/.../agent/` | The hosted agent: LLM schema inference, planner, executor, narrative, Q&A |
 | `apps/web/` | React 18 + Vite + TypeScript workbench (incl. the agent's upload → report flow) |
 | `ml/` | Dataset loaders, model training, the golden oracle, notebooks, CLI |

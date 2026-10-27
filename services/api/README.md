@@ -22,7 +22,7 @@ migrations from this directory with `alembic upgrade head`.
 | Area | Routes | What it does |
 |---|---|---|
 | Auth | `POST /api/auth/register`, `/login`, `GET /me` | Accounts and JWT sign-in (rate limited) |
-| Models | `POST /api/models/upload`, `GET /api/models` | Upload a model; it is loaded in a sandbox |
+| Models (trusted local only) | `POST /api/models/upload`, `GET /api/models` | Absent by default. Opt-in model loading is **not sandboxed**. |
 | Audits | `POST /api/sessions/create`, `/{id}/run`, `GET /{id}/status`, `/{id}/metrics` | Run a bias audit and read the results |
 | Mitigation | `GET /api/sessions/{id}/recommendations`, `POST /{id}/mitigate` | Ranked fixes, then a re-audit as a child session |
 | Reports | `GET /api/sessions/{id}/report` | Fairness Scorecard PDF |
@@ -40,6 +40,7 @@ Settings are read from environment variables (or a `.env` file) — see
 | `DATABASE_URL` | `postgresql+asyncpg://…` in production; defaults to local SQLite. |
 | `GROQ_API_KEY` / `GEMINI_API_KEY` | Optional. Without them the agent returns numbers only, no narrative. |
 | `EAGER_TASKS` | `true` runs audits in-process; `false` hands them to the arq/Redis worker. |
+| `ENABLE_MODEL_FILE_INGESTION` | Default `false`; hides `/api/models/*` and denies model-backed execution. `true` is only for trusted local files. Never enable for untrusted users. |
 
 ## Tests
 

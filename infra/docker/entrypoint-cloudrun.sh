@@ -4,6 +4,10 @@
 # so there is nothing to queue (see ethiclens_api.tasks).
 set -e
 
+# Hosted/public deployment cannot enable unsafe model-file execution, even if
+# an old Cloud Run environment variable was accidentally set to true.
+export ENABLE_MODEL_FILE_INGESTION=false
+
 cd /app/services/api
 alembic upgrade head
 cd /app

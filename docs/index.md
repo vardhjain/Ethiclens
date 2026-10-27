@@ -10,8 +10,9 @@ detection, prescriptive (executable) mitigation, and formal governance sign-off.
    model whose Disparate Impact (≈ 0.55) is asserted in CI.
 2. **Real, measured mitigation** — a held-out accuracy-vs-fairness Pareto frontier feeds a ranked
    recommender; the re-audit actually crosses the 0.80 threshold.
-3. **Security & responsible-AI maturity** — sandboxed model deserialisation, bootstrap confidence
-   intervals, Model Cards, Datasheets, and an honest [limitations](limitations.md) statement.
+3. **Security & responsible-AI maturity** — public model-file ingestion is disabled by default;
+   bootstrap confidence intervals, Model Cards, Datasheets, and honest
+   [limitations](limitations.md) are documented. Untrusted-model sandboxing is future work.
 
 ## Start here
 

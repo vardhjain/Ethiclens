@@ -30,6 +30,8 @@ services:
       DATABASE_URL: postgresql+asyncpg://ethiclens:ethiclens@postgres:5432/ethiclens
       REDIS_URL: redis://redis:6379/0
       EAGER_TASKS: "false"
+      # Disabled unless the operator explicitly opts into trusted-local model loading.
+      ENABLE_MODEL_FILE_INGESTION: ${ENABLE_MODEL_FILE_INGESTION:-false}
       SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me-in-production-32b+}
     ports: ["8000:8000"]
     depends_on:
@@ -43,6 +45,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://ethiclens:ethiclens@postgres:5432/ethiclens
       REDIS_URL: redis://redis:6379/0
       EAGER_TASKS: "false"
+      ENABLE_MODEL_FILE_INGESTION: ${ENABLE_MODEL_FILE_INGESTION:-false}
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
