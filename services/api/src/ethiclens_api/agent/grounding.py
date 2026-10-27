@@ -120,7 +120,7 @@ def is_grounded(text: str, source_numbers: set[str]) -> bool:
     """Check that numeric tokens are supported by numeric evidence."""
     for token in _NUMBER_RE.findall(text):
         if not _close_to_any(token, source_numbers):
-            _log.warning("Grounding rejected unsupported numeric claim")
+            _log.warning("Grounding rejected unsupported numeric claim: %s", token)
             return False
     return True
 
