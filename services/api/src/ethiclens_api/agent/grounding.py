@@ -147,14 +147,14 @@ def is_explanation_grounded(text: str, scorecard: dict) -> bool:
             continue
         label = re.escape(group["group_label"])
         if group.get("flagged") and re.search(
-            rf"{label}[^.!?]{{0,65}}\\b(?:was|is|were) not flagged\\b",
+            rf"{label}[^.!?]{{0,65}}\b(?:was|is|were) not flagged\b",
             text,
             re.IGNORECASE,
         ):
             _log.warning("Grounding rejected a reversed group flag")
             return False
         if not group.get("flagged") and re.search(
-            rf"{label}[^.!?]{{0,65}}\\b(?:was|is|were) flagged\\b",
+            rf"{label}[^.!?]{{0,65}}\b(?:was|is|were) flagged\b",
             text,
             re.IGNORECASE,
         ):
