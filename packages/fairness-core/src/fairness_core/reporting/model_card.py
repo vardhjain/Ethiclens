@@ -42,6 +42,7 @@ def generate_model_card(
             f"{'FLAG' if g.flagged else 'INCONCLUSIVE' if _inconclusive(g) else 'NO FLAG'} |"
         )
     metric_table = "\n".join(rows)
+    band_label = result.composite_band or "Not assessed"
 
     return f"""# Model Card — {model_name}
 
@@ -52,7 +53,7 @@ def generate_model_card(
 - **Audit date:** {audit_date}
 - **Evaluation dataset:** `{dataset}`
 - **Fairness status:** {status}
-- **Composite Bias Score:** {_fmt(result.composite_score)} ({result.composite_band or "Not assessed"})
+- **Composite Bias Score:** {_fmt(result.composite_score)} ({band_label})
 - **Minimum group DI:** {_fmt(result.min_di)}
 
 ## Intended use
