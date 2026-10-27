@@ -30,17 +30,19 @@ async def _complete(client: AsyncClient, headers: dict[str, str], session_id: st
     assert response.json()["status"] in {"COMPLETED", "FLAGGED"}
 
 
-async def test_only_finished_audits_with_metrics_can_be_approved(
-    client: AsyncClient, auth
-) -> None:
+async def test_only_finished_audits_with_metrics_can_be_approved(client: AsyncClient, auth) -> None:
     owner = await auth(client, "governance-owner@example.com")
     approver = await auth(client, "governance-approver@example.com", "governance_approver")
     session_id = await _session(client, owner)
     url = f"/api/sessions/{session_id}/sign-off"
 
     # Every unfinished state is rejected, including failed audits.
-    for state in (SessionStatus.DRAFT, SessionStatus.QUEUED, SessionStatus.RUNNING,
-                  SessionStatus.FAILED):
+    for state in (
+        SessionStatus.DRAFT,
+        SessionStatus.QUEUED,
+        SessionStatus.RUNNING,
+        SessionStatus.FAILED,
+    ):
         async with SessionLocal() as db:
             obj = await db.get(AuditSession, UUID(session_id))
             assert obj is not None
@@ -119,10 +121,14 @@ async def test_signed_off_audit_has_verifiable_fingerprint_and_is_frozen(
         from sqlalchemy import select
 
         metric = (
-            await db.execute(
-                select(FairnessMetric).where(FairnessMetric.session_id == UUID(session_id))
+            (
+                await db.execute(
+                    select(FairnessMetric).where(FairnessMetric.session_id == UUID(session_id))
+                )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         assert metric is not None
         metric.value = (metric.value or 0.0) + 0.1
         await db.commit()
