@@ -106,7 +106,6 @@ def _verdict_text(result: AuditResult, threshold: float) -> str:
     )
 
 
-
 def generate_scorecard_pdf(result: AuditResult, meta: ScorecardMeta) -> bytes:
     """Render the Fairness Scorecard and return the PDF as bytes."""
     from reportlab.lib import colors
