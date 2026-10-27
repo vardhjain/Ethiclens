@@ -116,13 +116,9 @@ def benchmark_case(dataset: DemoDataset, repeats: int) -> dict:
             "flagged": g["flagged"],
             "di_value": (g["metrics"].get("disparate_impact") or {}).get("value"),
             "di_ci": (g["metrics"].get("disparate_impact") or {}).get("ci"),
-            "di_classification": (g["metrics"].get("disparate_impact") or {}).get(
-                "classification"
-            ),
+            "di_classification": (g["metrics"].get("disparate_impact") or {}).get("classification"),
             "eo_value": (g["metrics"].get("equalized_odds") or {}).get("value"),
-            "eo_classification": (g["metrics"].get("equalized_odds") or {}).get(
-                "classification"
-            ),
+            "eo_classification": (g["metrics"].get("equalized_odds") or {}).get("classification"),
         }
         for g in last_scorecard["groups"]
     ]
