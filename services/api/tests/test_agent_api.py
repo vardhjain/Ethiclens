@@ -9,11 +9,10 @@ import time
 from httpx import AsyncClient
 from sqlalchemy import select
 
+import ethiclens_api.routers.agent as agent_router
 from ethiclens_api.agent.quota import llm_calls_remaining, user_llm_calls_remaining
 from ethiclens_api.db import SessionLocal
 from ethiclens_api.models import UserAccount
-
-import ethiclens_api.routers.agent as agent_router
 
 _CSV = "\n".join(
     ["race,flag,score"]
