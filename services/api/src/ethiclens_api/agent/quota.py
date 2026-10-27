@@ -59,23 +59,17 @@ async def reserve_llm_attempt(
     insert = pg_insert if engine.dialect.name == "postgresql" else sqlite_insert
     today = _today()
     global_stmt = insert(UsageCounter).values(day=today, llm_calls=1)
-    global_stmt = (
-        global_stmt.on_conflict_do_update(
-            index_elements=[UsageCounter.day],
-            set_={"llm_calls": UsageCounter.llm_calls + 1},
-            where=UsageCounter.llm_calls < global_cap,
-        )
-        .returning(UsageCounter.llm_calls)
-    )
+    global_stmt = global_stmt.on_conflict_do_update(
+        index_elements=[UsageCounter.day],
+        set_={"llm_calls": UsageCounter.llm_calls + 1},
+        where=UsageCounter.llm_calls < global_cap,
+    ).returning(UsageCounter.llm_calls)
     user_stmt = insert(UserUsageCounter).values(user_id=user_id, day=today, llm_calls=1)
-    user_stmt = (
-        user_stmt.on_conflict_do_update(
-            index_elements=[UserUsageCounter.user_id, UserUsageCounter.day],
-            set_={"llm_calls": UserUsageCounter.llm_calls + 1},
-            where=UserUsageCounter.llm_calls < user_cap,
-        )
-        .returning(UserUsageCounter.llm_calls)
-    )
+    user_stmt = user_stmt.on_conflict_do_update(
+        index_elements=[UserUsageCounter.user_id, UserUsageCounter.day],
+        set_={"llm_calls": UserUsageCounter.llm_calls + 1},
+        where=UserUsageCounter.llm_calls < user_cap,
+    ).returning(UserUsageCounter.llm_calls)
 
     try:
         global_reserved = (await db.execute(global_stmt)).scalar_one_or_none()
