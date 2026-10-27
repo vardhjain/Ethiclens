@@ -22,13 +22,13 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key-at-least-32-bytes-long")
 os.environ.setdefault("MODEL_STORAGE_DIR", str(Path(tempfile.gettempdir()) / "ethiclens_models"))
 
 import pytest  # noqa: E402
-from sqlalchemy import select  # noqa: E402
 import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
+from sqlalchemy import select  # noqa: E402
 
 from ethiclens_api.db import Base, SessionLocal, engine  # noqa: E402
-from ethiclens_api.models import UserAccount, UserRole  # noqa: E402
 from ethiclens_api.main import app  # noqa: E402
+from ethiclens_api.models import UserAccount, UserRole  # noqa: E402
 from ethiclens_api.rate_limit import limiter  # noqa: E402
 
 
