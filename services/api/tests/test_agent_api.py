@@ -187,8 +187,10 @@ async def test_list_records_returns_summary_of_owned_records(
     assert summary["outcome_column"] == "flag"
     assert summary["grounded"] is True
     assert summary["degraded"] is False
-    assert summary["composite_band"] is not None
-    assert isinstance(summary["composite_score"], float)
+    # This predictions-only CSV has no true labels, so EO and the full
+    # three-metric composite are not measurable; never show a risk band.
+    assert summary["composite_band"] is None
+    assert summary["composite_score"] is None
 
 
 async def test_list_records_orders_most_recent_first(

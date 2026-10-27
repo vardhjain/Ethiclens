@@ -38,7 +38,15 @@ function diChartData(metrics: MetricOut[]) {
         (m.value as number) - (m.ci_low ?? (m.value as number)),
         (m.ci_high ?? (m.value as number)) - (m.value as number),
       ] as [number, number],
-      flagged: (m.value as number) < 0.8,
+      flagged:
+        m.classification !== "INSUFFICIENT_DATA" &&
+        m.ci_high != null &&
+        m.ci_high < 0.8,
+      inconclusive:
+        m.classification === "INSUFFICIENT_DATA" ||
+        m.ci_low == null ||
+        m.ci_high == null ||
+        (m.ci_low <= 0.8 && m.ci_high >= 0.8),
     }));
 }
 
@@ -139,7 +147,7 @@ export function SessionDetailPage() {
                 <Bar dataKey="di">
                   <ErrorBar dataKey="err" width={4} stroke="#555" />
                   {diChartData(metrics.data.metrics).map((d, i) => (
-                    <Cell key={i} fill={d.flagged ? "#c0392b" : "#27ae60"} />
+                    <Cell key={i} fill={d.flagged ? "#c0392b" : d.inconclusive ? "#95a5a6" : "#27ae60"} />
                   ))}
                 </Bar>
               </BarChart>

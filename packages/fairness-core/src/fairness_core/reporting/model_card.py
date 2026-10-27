@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from fairness_core.reporting.scorecard import _inconclusive
 from fairness_core.types import AuditResult, MetricName
 
 __all__ = ["generate_model_card"]
@@ -18,7 +19,13 @@ def generate_model_card(
 ) -> str:
     """Return a Markdown Model Card summarising the model and its fairness audit."""
     flagged = result.flagged_groups
-    status = "⚠️ FLAGGED" if flagged else "✅ within thresholds"
+    status = (
+        "⚠️ FLAGGED"
+        if flagged
+        else "INCONCLUSIVE"
+        if result.composite_score is None or any(_inconclusive(g) for g in result.groups)
+        else "No statistically supported violation detected"
+    )
     rows = ["| Group | Disparate Impact | 95% CI | Status |", "|---|---|---|---|"]
     for g in result.groups:
         m = g.metric(MetricName.DISPARATE_IMPACT)
@@ -26,7 +33,10 @@ def generate_model_card(
             continue
         ci = f"[{m.ci.low:.2f}, {m.ci.high:.2f}]" if m.ci and m.ci.low == m.ci.low else "—"
         val = f"{m.value:.3f}" if m.value is not None else "—"
-        rows.append(f"| {g.group_label} | {val} | {ci} | {'FLAG' if g.flagged else 'OK'} |")
+        rows.append(
+            f"| {g.group_label} | {val} | {ci} | "
+            f"{'FLAG' if g.flagged else 'INCONCLUSIVE' if _inconclusive(g) else 'NO FLAG'} |"
+        )
     metric_table = "\n".join(rows)
 
     return f"""# Model Card — {model_name}
@@ -50,7 +60,8 @@ Subgroups are compared against the highest-selection-rate (privileged) group.
 ## Metrics
 Disparate Impact (4/5ths rule), Statistical Parity Difference, and — when ground-truth
 labels are available — Equalized Odds, each reported with a bootstrap 95% confidence interval.
-A group is flagged only when its DI confidence interval lies entirely below 0.80.
+A group is flagged when the DI CI lies below 0.80 or the Equalized Odds CI lies above
+0.10, with sufficient samples in both comparison groups. Missing values are inconclusive.
 
 {metric_table}
 
@@ -60,7 +71,9 @@ This card supports, but does not replace, human review and legal assessment.
 
 ## Caveats & recommendations
 - The composite score is a triage convenience, **not** a legal standard.
-- Confidence intervals widen on small subgroups; treat wide intervals as "unknown".
+- Minimum-subgroup floors apply to both sides of every comparison; an inconclusive
+  interval is not a clean pass.
+- A composite score is unavailable if labels or any required metric are missing.
 - Re-audit after any retraining or data shift. See `LIMITATIONS.md`.
 """
 

@@ -141,12 +141,14 @@ def unavailable_result(scorecard: dict) -> NarrativeResult:
 
 
 def _numeric_only_fallback(scorecard: dict) -> NarrativeOutput:
-    band = scorecard.get("composite_band", "unknown")
+    band = scorecard.get("composite_band") or "not assessed"
     score = scorecard.get("composite_score")
+    score_label = str(score) if score is not None else "not assessed"
     min_di = scorecard.get("min_disparate_impact")
     flagged = [g["group_label"] for g in scorecard.get("groups", []) if g.get("flagged")]
     narrative = (
-        f"Composite fairness score: {score} ({band}). Minimum disparate impact ratio: {min_di}. "
+        f"Composite fairness score: {score_label} ({band}). "
+        f"Minimum disparate impact ratio: {min_di}. "
         f"Flagged groups: {', '.join(flagged) if flagged else 'none'}. "
         "Narrative generation was unavailable or failed a grounding check; showing numeric "
         "results only."
