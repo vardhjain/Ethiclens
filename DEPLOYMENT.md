@@ -246,7 +246,7 @@ the exact revision, does not establish production parity. To deploy manually
 with a verifiable revision from a clean checkout, first write the marker:
 
 ```bash
-printf '%s\\n' "$(git rev-parse HEAD)" > services/api/src/ethiclens_api/_deployment_revision
+printf '%s\n' "$(git rev-parse HEAD)" > services/api/src/ethiclens_api/_deployment_revision
 gcloud run deploy ethiclens-api --source . --region us-central1 --project "$PROJECT_ID"
 ```
 
