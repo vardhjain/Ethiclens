@@ -60,9 +60,7 @@ _log = logging.getLogger("ethiclens.agent")
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 
 
-def _metered_llm(
-    client: LLMClient, user_id: UUID, global_cap: int, user_cap: int
-) -> LLMClient:
+def _metered_llm(client: LLMClient, user_id: UUID, global_cap: int, user_cap: int) -> LLMClient:
     """Bridge worker-thread SDK calls to atomic async database reservations.
 
     Every agent LLM call uses asyncio.to_thread, leaving the event loop free to
