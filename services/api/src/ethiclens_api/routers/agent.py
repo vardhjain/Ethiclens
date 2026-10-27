@@ -51,7 +51,7 @@ from ethiclens_api.agent.quota import reserve_llm_attempt
 from ethiclens_api.agent.schema_inference import infer_schema
 from ethiclens_api.agent.schemas import AskRequest, SchemaInferenceProposal
 from ethiclens_api.config import get_settings
-from ethiclens_api.db import get_session
+from ethiclens_api.db import SessionLocal, get_session
 from ethiclens_api.models import AgentAuditRecord, UserAccount
 from ethiclens_api.security import get_current_user
 
@@ -61,7 +61,7 @@ router = APIRouter(prefix="/api/agent", tags=["agent"])
 
 
 def _metered_llm(
-    client: LLMClient, db: AsyncSession, user_id: UUID, global_cap: int, user_cap: int
+    client: LLMClient, user_id: UUID, global_cap: int, user_cap: int
 ) -> LLMClient:
     """Bridge worker-thread SDK calls to atomic async database reservations.
 
@@ -71,10 +71,15 @@ def _metered_llm(
     """
     loop = asyncio.get_running_loop()
 
+    async def reserve_once() -> bool:
+        # Keep the reservation transaction independent of the request's ORM
+        # session: a rejected attempt requires rollback, which otherwise
+        # expires user/record objects needed later by the HTTP handler.
+        async with SessionLocal() as quota_db:
+            return await reserve_llm_attempt(quota_db, user_id, global_cap, user_cap)
+
     def reserve() -> None:
-        task = asyncio.run_coroutine_threadsafe(
-            reserve_llm_attempt(db, user_id, global_cap, user_cap), loop
-        )
+        task = asyncio.run_coroutine_threadsafe(reserve_once(), loop)
         try:
             allowed = task.result()
         except SQLAlchemyError as exc:
@@ -168,7 +173,6 @@ async def _run_and_persist(
     if client is not None:
         metered = _metered_llm(
             client,
-            db,
             user.id,
             settings.agent_daily_llm_call_cap,
             settings.agent_daily_llm_call_cap_per_user,
@@ -234,7 +238,6 @@ async def propose_schema(
     )
     metered = _metered_llm(
         client,
-        db,
         user.id,
         settings.agent_daily_llm_call_cap,
         settings.agent_daily_llm_call_cap_per_user,
@@ -414,7 +417,6 @@ async def ask_about_record(
         )
     metered = _metered_llm(
         client,
-        db,
         user.id,
         settings.agent_daily_llm_call_cap,
         settings.agent_daily_llm_call_cap_per_user,
