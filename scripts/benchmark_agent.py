@@ -108,6 +108,24 @@ def benchmark_case(dataset: DemoDataset, repeats: int) -> dict:
         last_data = frame
 
     assert last_data is not None
+    group_evidence = [
+        {
+            "group_label": g["group_label"],
+            "reference_rows": g["n_privileged"],
+            "comparison_rows": g["n_unprivileged"],
+            "flagged": g["flagged"],
+            "di_value": (g["metrics"].get("disparate_impact") or {}).get("value"),
+            "di_ci": (g["metrics"].get("disparate_impact") or {}).get("ci"),
+            "di_classification": (g["metrics"].get("disparate_impact") or {}).get(
+                "classification"
+            ),
+            "eo_value": (g["metrics"].get("equalized_odds") or {}).get("value"),
+            "eo_classification": (g["metrics"].get("equalized_odds") or {}).get(
+                "classification"
+            ),
+        }
+        for g in last_scorecard["groups"]
+    ]
     output = {
         "key": dataset.key,
         "title": dataset.title,
@@ -117,6 +135,8 @@ def benchmark_case(dataset: DemoDataset, repeats: int) -> dict:
         "positive_is_favorable": dataset.proposal.outcome_direction.positive_is_favorable,
         "continuous_score_available": dataset.proposal.score_column is not None,
         "cohort_comparisons": len(last_scorecard["groups"]),
+        "computable_di_cohorts": sum(g["di_value"] is not None for g in group_evidence),
+        "group_evidence": group_evidence,
         "flagged_cohorts": sum(bool(g["flagged"]) for g in last_scorecard["groups"]),
         "inconclusive_cohorts": sum(
             any(m.get("classification") == "INSUFFICIENT_DATA" for m in g["metrics"].values())
@@ -152,8 +172,8 @@ def render_markdown(report: dict) -> str:
         f"{report['repeats']} run(s)/dataset.",
         "",
         "| Dataset | Rows | Labels | Favorable polarity | Flagged groups | "
-        "Min DI | Measured mitigation | Median wall time |",
-        "|---|---:|---|---|---:|---:|---|---:|",
+        "Overall DI | DI comparisons available | Measured mitigation | Median wall time |",
+        "|---|---:|---|---|---:|---:|---:|---|---:|",
     ]
     for result in report["cases"]:
         di = result["min_disparate_impact"]
@@ -165,6 +185,7 @@ def render_markdown(report: dict) -> str:
             f"| {result['key']} | {result['rows']} | "
             f"{'yes' if result['labels_available'] else 'no'} | {polarity} | "
             f"{result['flagged_cohorts']} | {di_text} | "
+            f"{result['computable_di_cohorts']} / {result['cohort_comparisons']} | "
             f"{measured} | {result['timing_ms']['total_ms']['median']:.0f} ms |"
         )
     rows += [
@@ -174,6 +195,10 @@ def render_markdown(report: dict) -> str:
         "different machines or GitHub Actions runner loads**. No throughput, "
         "p95 latency, inference accuracy, dollar cost, or fairness improvement "
         "can be inferred from them.",
+        "",
+        "Overall DI may be inconclusive even if some group-level DI estimates are " 
+        "computable: see the group_evidence records instead of treating the " 
+        "missing aggregate as zero.", 
         "",
         "See `evidence.json` for source-file SHA-256 hashes, per-stage median/min/max "
         "timings and each dataset's actual held-out mitigation fields. Null values "
