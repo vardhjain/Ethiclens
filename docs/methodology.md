@@ -90,7 +90,11 @@ Composite = clamp(0.40·g_DI + 0.35·g_SPD + 0.25·g_EO, 0, 1)
 Bands: `< 0.60` High Risk, `< 0.80` Medium Risk, `≥ 0.80` Low Risk. Worked example (the value
 pinned in `TS-UNIT-004`): `compute_composite_bias_score(0.6, −0.25, 0.15) = 0.7150`. The composite is withheld when any comparison lacks DI, SPD or Equalized Odds (including
 predictions-only datasets without ground-truth labels). Missing EO is **never silently set
-to zero**. The composite
+to zero**. The minimum DI headline is tracked separately and may still be
+published if **all** cohort DI comparisons meet their sample floors and have
+defined reference selection rates. If any DI comparison is underpowered,
+the overall minimum DI is withheld rather than cherry-picking reliable groups.
+The composite
 is a **triage convenience, not a legal standard** — see [Limitations](limitations.md).
 The weighting rationale is recorded in [`adr/0001-composite-weights.md`](adr/0001-composite-weights.md).
 

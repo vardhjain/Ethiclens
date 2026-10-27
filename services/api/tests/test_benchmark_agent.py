@@ -75,6 +75,7 @@ def test_markdown_discloses_unavailable_measurements() -> None:
                 "cohort_comparisons": 1,
                 "computable_di_cohorts": 0,
                 "min_disparate_impact": None,
+                "composite_reason": "Ground-truth labels absent.",
                 "heldout_mitigation": None,
                 "timing_ms": {"total_ms": {"median": 42.0}},
             }

@@ -45,8 +45,22 @@ interface ChatMessage {
 
 const BAD_CLASSIFICATIONS = new Set(["FAIL", "Flagged"]);
 
+export function groupEvidenceLabel(
+  group: AgentRecord["scorecard"]["groups"][number],
+): string {
+  if (group.flagged) return "Flagged";
+  if (
+    Object.values(group.metrics).some(
+      (m) => !m || m.classification === "INSUFFICIENT_DATA",
+    )
+  ) {
+    return "Not flagged (incomplete evidence)";
+  }
+  return "Not flagged";
+}
+
 function MetricCell({ metric }: { metric: ScorecardMetric | undefined }) {
-  if (!metric || metric.value == null) {
+  if (!metric || metric.value == null || metric.classification === "INSUFFICIENT_DATA") {
     return (
       <Text size="sm" c="dimmed">
         {metric?.classification === "INSUFFICIENT_DATA"
@@ -73,7 +87,7 @@ function MetricCell({ metric }: { metric: ScorecardMetric | undefined }) {
 export function formatMetricMarkdown(
   metric: ScorecardMetric | undefined,
 ): string {
-  if (!metric || metric.value == null) {
+  if (!metric || metric.value == null || metric.classification === "INSUFFICIENT_DATA") {
     return metric?.classification === "INSUFFICIENT_DATA"
       ? "Insufficient data"
       : "N/A";
@@ -90,6 +104,14 @@ export function buildMarkdownReport(r: AgentRecord): string {
   if (sc.composite_band) lines.push(`**Risk band:** ${sc.composite_band}`);
   if (sc.composite_score != null) {
     lines.push(`**Composite score:** ${sc.composite_score.toFixed(3)}`);
+  } else {
+    lines.push("**Composite score:** Not assessed");
+    if (sc.composite_reason) lines.push(sc.composite_reason);
+  }
+  if (sc.min_disparate_impact != null) {
+    lines.push(`**Minimum group DI:** ${sc.min_disparate_impact.toFixed(3)}`);
+  } else {
+    lines.push("**Minimum group DI:** Not assessed");
   }
   lines.push(
     `**Narrative:** ${r.grounded ? "Grounded" : "Numeric-only"}${r.degraded ? " (degraded)" : ""}`,
@@ -121,7 +143,7 @@ export function buildMarkdownReport(r: AgentRecord): string {
         `${formatMetricMarkdown(g.metrics["disparate_impact"])} | ` +
         `${formatMetricMarkdown(g.metrics["spd"])} | ` +
         `${formatMetricMarkdown(g.metrics["equalized_odds"])} | ` +
-        `${g.flagged ? "Flagged" : "OK"} |`,
+        `${groupEvidenceLabel(g)} |`,
     );
   }
 
@@ -404,6 +426,23 @@ export function AgentRecordPage() {
         <Text size="sm" c="dimmed">
           {sc.metrics_reason}
         </Text>
+        <Text size="sm" mt="xs">
+          Minimum group DI:{" "}
+          {sc.min_disparate_impact == null
+            ? "Not assessed"
+            : sc.min_disparate_impact.toFixed(3)}
+        </Text>
+        {sc.composite_score == null ? (
+          <Text size="sm" c="dimmed" mt="xs">
+            Composite score: not assessed.{" "}
+            {sc.composite_reason ??
+              "Not all group comparisons have the three required metrics."}
+          </Text>
+        ) : (
+          <Text size="sm" mt="xs">
+            Composite score: {sc.composite_score.toFixed(3)}
+          </Text>
+        )}
         {sc.excluded_subgroups.length > 0 && (
           <Stack gap={4} mt="xs">
             {sc.excluded_subgroups.map((e, i) => (
@@ -445,11 +484,12 @@ export function AgentRecordPage() {
                     <MetricCell metric={g.metrics["equalized_odds"]} />
                   </Table.Td>
                   <Table.Td>
-                    {g.flagged ? (
-                      <Badge color="red">Flagged</Badge>
-                    ) : (
-                      <Badge color="green">OK</Badge>
-                    )}
+                    <Badge
+                      color={g.flagged ? "red" : "gray"}
+                      variant={g.flagged ? "filled" : "light"}
+                    >
+                      {groupEvidenceLabel(g)}
+                    </Badge>
                   </Table.Td>
                 </Table.Tr>
               ))}

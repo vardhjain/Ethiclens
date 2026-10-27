@@ -131,7 +131,10 @@ def benchmark_case(dataset: DemoDataset, repeats: int) -> dict:
         "positive_is_favorable": dataset.proposal.outcome_direction.positive_is_favorable,
         "continuous_score_available": dataset.proposal.score_column is not None,
         "cohort_comparisons": len(last_scorecard["groups"]),
-        "computable_di_cohorts": sum(g["di_value"] is not None for g in group_evidence),
+        "computable_di_cohorts": sum(
+            g["di_value"] is not None and g["di_classification"] != "INSUFFICIENT_DATA"
+            for g in group_evidence
+        ),
         "group_evidence": group_evidence,
         "flagged_cohorts": sum(bool(g["flagged"]) for g in last_scorecard["groups"]),
         "inconclusive_cohorts": sum(
@@ -140,6 +143,7 @@ def benchmark_case(dataset: DemoDataset, repeats: int) -> dict:
         ),
         "min_disparate_impact": last_scorecard["min_disparate_impact"],
         "composite_score": last_scorecard["composite_score"],
+        "composite_reason": last_scorecard["composite_reason"],
         "heldout_mitigation": last_scorecard["measured_mitigation"],
         "timing_ms": {
             name: {
@@ -192,9 +196,10 @@ def render_markdown(report: dict) -> str:
         "p95 latency, inference accuracy, dollar cost, or fairness improvement "
         "can be inferred from them.",
         "",
-        "Overall DI may be inconclusive even if some group-level DI estimates are "
-        "computable: see the group_evidence records instead of treating the "
-        "missing aggregate as zero.",
+        "The minimum DI is only published when **every** cohort comparison has "
+        "sufficient DI evidence. The separate three-metric composite may still "
+        "be unavailable when Equalized Odds is missing or underpowered. "
+        "See group_evidence and composite_reason for the exact scope.",
         "",
         "See `evidence.json` for source-file SHA-256 hashes, per-stage median/min/max "
         "timings and each dataset's actual held-out mitigation fields. Null values "

@@ -123,6 +123,21 @@ def run_audit(
         )
 
     composite, band, min_di = _aggregate(groups)
+    if composite is not None:
+        composite_reason = None
+    elif not groups:
+        composite_reason = "No group comparisons are available for a composite score."
+    elif not has_labels:
+        composite_reason = (
+            "The three-metric composite requires Equalized Odds, which cannot be "
+            "evaluated without ground-truth outcome labels."
+        )
+    else:
+        composite_reason = (
+            "The three-metric composite requires reliable Disparate Impact, "
+            "Statistical Parity Difference and Equalized Odds estimates for EVERY "
+            "group comparison; at least one metric has insufficient evidence."
+        )
     return AuditResult(
         composite_score=composite,
         composite_band=band,
@@ -137,6 +152,7 @@ def run_audit(
                 g.group_label for g in groups if any(not m.computable for m in g.metrics.values())
             ],
             "composite_complete": composite is not None,
+            "composite_reason": composite_reason,
         },
     )
 
@@ -372,28 +388,40 @@ def _audit_pair(
 
 
 def _aggregate(groups: list[GroupAuditResult]) -> tuple[float | None, str | None, float | None]:
-    """Publish a three-metric headline only when every comparison is evaluable.
+    """Keep the valid DI headline independent from the full three-metric composite.
 
-    In particular, unavailable Equalized Odds is NOT a perfect zero gap, and
-    dropping an undersampled group would bias the overall score upwards.
-    The raw per-group point estimates remain available independently.
+    A minimum DI is publishable if *every* comparison has a sufficient DI
+    estimate, even if EO is unavailable (for example, no ground truth).
+    Do not silently select only the well-powered groups: that could conceal
+    an unassessable disadvantaged group. The composite still requires all
+    three metrics on every comparison.
     """
     if not groups:
         return None, None, None
-    scored: list[tuple[GroupAuditResult, float]] = []
-    for g in groups:
-        di_m = g.metric(MetricName.DISPARATE_IMPACT)
-        spd_m = g.metric(MetricName.SPD)
-        eo_m = g.metric(MetricName.EQUALIZED_ODDS)
-        if not all(m is not None and m.computable for m in (di_m, spd_m, eo_m)):
-            return None, None, None
-        assert di_m is not None and di_m.value is not None
-        scored.append((g, di_m.value))
 
-    worst_g, di = min(scored, key=lambda pair: pair[1])
+    di_pairs: list[tuple[GroupAuditResult, float]] = []
+    for group in groups:
+        di = group.metric(MetricName.DISPARATE_IMPACT)
+        if di is None or not di.computable or di.value is None:
+            return None, None, None
+        di_pairs.append((group, di.value))
+
+    worst_g, min_di = min(di_pairs, key=lambda pair: pair[1])
+    if any(
+        not all(
+            metric is not None and metric.computable
+            for metric in (
+                group.metric(MetricName.SPD),
+                group.metric(MetricName.EQUALIZED_ODDS),
+            )
+        )
+        for group in groups
+    ):
+        return None, None, min_di
+
     spd = worst_g.metric(MetricName.SPD)
     eo = worst_g.metric(MetricName.EQUALIZED_ODDS)
     assert spd is not None and spd.value is not None
     assert eo is not None and eo.value is not None
-    composite = compute_composite_bias_score(di, spd.value, eo.value)
-    return composite, classify_composite_score(composite), di
+    composite = compute_composite_bias_score(min_di, spd.value, eo.value)
+    return composite, classify_composite_score(composite), min_di

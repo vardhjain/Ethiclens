@@ -65,6 +65,7 @@ def build_scorecard(
         "composite_score": result.composite_score,
         "composite_band": result.composite_band,
         "min_disparate_impact": result.min_di,
+        "composite_reason": result.metadata.get("composite_reason"),
         "has_labels": result.has_labels,
         "metrics_reason": plan.metrics_reason,
         "excluded_subgroups": [e.model_dump() for e in plan.excluded_subgroups],
