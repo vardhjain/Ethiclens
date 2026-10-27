@@ -66,6 +66,18 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Refuse deployment of a superseded commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Workflow concurrency alone does not guarantee FIFO execution.
+          # Never publish an older commit after main has advanced.
+          current_main="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [[ -z "$current_main" || "$current_main" != "$GITHUB_SHA" ]]; then
+            echo "::error::Deployment cancelled: main is now $current_main, workflow commit is $GITHUB_SHA"
+            exit 1
+          fi
+
       - name: Embed Git commit in container source
         shell: bash
         run: |
