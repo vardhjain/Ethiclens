@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-
-from sqlalchemy import select
 from datetime import UTC, datetime
 from uuid import UUID
+
+from sqlalchemy import select
 
 from ethiclens_api.audit_service import (
     DEFAULT_FEATURES,
