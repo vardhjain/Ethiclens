@@ -54,7 +54,7 @@ def ask(client: LLMClient, scorecard: dict, question: str) -> QAResult:
     safe_question = question.replace("</untrusted_question>", "&lt;/untrusted_question&gt;")
     prompt = (
         f"Scorecard JSON:\n{scorecard_text}\n\n"
-        f"<untrusted_question>{safe_question}</untrusted_question>"
+        f"Question:\n<untrusted_question>{safe_question}</untrusted_question>"
     )
 
     for _attempt in range(2):
