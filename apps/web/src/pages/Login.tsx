@@ -28,7 +28,7 @@ export function LoginPage() {
   async function submit(register: boolean) {
     setBusy(true);
     try {
-      if (register) await api.register(email, password, "ml_engineer");
+      if (register) await api.register(email, password);
       await login(email, password);
       nav("/");
     } catch (e) {

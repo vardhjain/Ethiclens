@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ethiclens_api.config import get_settings
 from ethiclens_api.db import get_session
-from ethiclens_api.models import UserAccount
+from ethiclens_api.models import UserAccount, UserRole
 from ethiclens_api.rate_limit import limiter
 from ethiclens_api.schemas import Token, UserCreate, UserOut
 from ethiclens_api.security import (
@@ -34,7 +34,8 @@ async def register(
         email=body.email,
         hashed_password=hash_password(body.password),
         full_name=body.full_name,
-        role=body.role,
+        # Public registration always receives the lowest-privilege account role.
+        role=UserRole.ML_ENGINEER,
     )
     session.add(user)
     await session.commit()

@@ -254,8 +254,8 @@ export const api = {
     if (!res.ok) throw new Error("Invalid email or password");
     return (await res.json()) as Token;
   },
-  register: (email: string, password: string, role: Role) =>
-    request("/auth/register", { method: "POST", body: JSON.stringify({ email, password, role }) }),
+  register: (email: string, password: string) =>
+    request("/auth/register", { method: "POST", body: JSON.stringify({ email, password }) }),
   listSessions: () => request<SessionOut[]>("/sessions"),
   getSession: (id: string) => request<SessionOut>(`/sessions/${id}`),
   createSession: (payload: Record<string, unknown>) =>
