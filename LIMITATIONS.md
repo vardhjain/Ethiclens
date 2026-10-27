@@ -114,3 +114,11 @@ an independent system. However, both the fingerprint and data live in the same
 database: anyone able to rewrite both can conceal changes. This is **not** a
 digital signature or immutable audit ledger. See
 [`docs/governance-integrity.md`](docs/governance-integrity.md).
+
+## 15. Insufficient evidence must not look like a fairness pass
+The audit now checks minimum subgroup sizes on **both** sides of every comparison,
+withholds the three-metric composite if any metric is missing (including label-free
+Equalized Odds), and reserves statistical flags for valid confidence intervals.
+A point estimate below 0.80 is descriptive, **not automatically a statistically
+supported violation**. Conversely, no flag may mean inconclusive evidence rather
+than a clean result. The Model Card and PDF explicitly distinguish these states.

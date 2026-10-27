@@ -8,8 +8,9 @@ confidence interval, plus an aggregate Composite Bias Score.
 Key design decision (the methodological fix): **error-based metrics are only
 computed when ``target`` labels are supplied.** On a label-free cohort,
 Equalized Odds is reported as ``INSUFFICIENT_DATA`` rather than fabricated.
-A group is flagged only when its DI confidence interval lies entirely below
-0.80 (falling back to the point estimate when no CI is available).
+A group is flagged only when its confidence interval supports a threshold
+violation and both comparator groups meet minimum sample floors. Unavailable
+metrics never count as evidence of fairness or contribute to the composite.
 """
 
 from __future__ import annotations
@@ -128,7 +129,17 @@ def run_audit(
         min_di=min_di,
         groups=groups,
         has_labels=has_labels,
-        metadata={"n_rows": len(data), "features": features, "threshold": threshold},
+        metadata={
+            "n_rows": len(data),
+            "features": features,
+            "threshold": threshold,
+            "insufficient_groups": [
+                g.group_label
+                for g in groups
+                if any(not m.computable for m in g.metrics.values())
+            ],
+            "composite_complete": composite is not None,
+        },
     )
 
 
@@ -195,66 +206,89 @@ def _audit_pair(
     label = f"{attribute}:{unpriv_label}"
     metrics: dict[str, MetricResult] = {}
 
+    # BOTH groups must meet the rate floor. A tiny privileged/reference group
+    # can make the denominator and all comparisons just as unstable.
+    rates_defined = bool(np.isfinite(p.selection_rate) and np.isfinite(u.selection_rate))
+    enough_rates = has_sufficient_data(p.n) and has_sufficient_data(u.n)
+    rate_reason = (
+        "Selection-rate comparisons require at least 100 members in EACH group."
+        if not enough_rates
+        else "A comparison group has no observed selection rate."
+    )
+
     # --- Disparate Impact --------------------------------------------------
     di_val: float | None = None
-    flagged_di = False
-    try:
+    if rates_defined and p.selection_rate > 0:
         di_val = calculate_disparate_impact(p.selection_rate, u.selection_rate)
-    except ValueError:
-        di_val = None
+        if not np.isfinite(di_val):
+            di_val = None
 
     di_ci = None
     p_value = None
-    if di_val is not None:
-        enough = has_sufficient_data(u.n)
-        if compute_ci and enough:
+    if di_val is not None and enough_rates:
+        if compute_ci:
             di_ci = disparate_impact_ci(
                 sensitive, y_pred, priv_value, unpriv_value, n_boot=n_boot, seed=seed
             )
-        # Significance of the selection-rate gap.
         _, p_value = two_proportion_ztest(
             round(u.selection_rate * u.n),
             u.n,
             round(p.selection_rate * p.n),
             p.n,
         )
-        # Flag on the CI when we have one (excludes 0.80 below), else point estimate.
-        if di_ci is not None and not np.isnan(di_ci.high):
-            flagged_di = di_ci.high < di_threshold
-        else:
-            flagged_di = di_val < di_threshold
-        cls = (
-            Classification.INSUFFICIENT_DATA.value
-            if not enough
-            else classify_disparate_impact(di_val, di_threshold)
-        )
-        metrics[MetricName.DISPARATE_IMPACT.value] = MetricResult(
-            name=MetricName.DISPARATE_IMPACT.value,
-            value=di_val,
-            group_label=label,
-            classification=cls,
-            ci=di_ci,
-            p_value=p_value,
-            n=u.n,
-            privileged_rate=p.selection_rate,
-            unprivileged_rate=u.selection_rate,
-        )
+    di_ci_valid = (
+        di_ci is not None and np.isfinite(di_ci.low) and np.isfinite(di_ci.high)
+    )
+    # A numerical ratio crossing 0.80 is NOT proof of a statistically
+    # supported violation. Never fall back to that point estimate for a flag.
+    flagged_di = bool(
+        enough_rates and di_ci_valid and di_ci is not None and di_ci.high < di_threshold
+    )
+    di_ok = enough_rates and di_val is not None
+    metrics[MetricName.DISPARATE_IMPACT.value] = MetricResult(
+        name=MetricName.DISPARATE_IMPACT.value,
+        value=di_val,
+        group_label=label,
+        classification=(
+            classify_disparate_impact(di_val, di_threshold)
+            if di_ok and di_val is not None
+            else Classification.INSUFFICIENT_DATA.value
+        ),
+        ci=di_ci if di_ci_valid else None,
+        p_value=p_value,
+        n=u.n,
+        privileged_rate=p.selection_rate if rates_defined else None,
+        unprivileged_rate=u.selection_rate if rates_defined else None,
+        details={
+            "n_privileged": p.n,
+            "n_unprivileged": u.n,
+            **(
+                {"reason": rate_reason if not enough_rates or not rates_defined
+                 else "Disparate Impact is undefined when the reference selection rate is zero."}
+                if not di_ok
+                else {}
+            ),
+        },
+    )
 
     # --- Statistical Parity Difference ------------------------------------
-    spd_val = calculate_spd(p.selection_rate, u.selection_rate)
+    spd_val = calculate_spd(p.selection_rate, u.selection_rate) if rates_defined else None
     metrics[MetricName.SPD.value] = MetricResult(
         name=MetricName.SPD.value,
         value=spd_val,
         group_label=label,
-        classification=classify_spd(spd_val),
+        classification=(
+            classify_spd(spd_val)
+            if enough_rates and spd_val is not None
+            else Classification.INSUFFICIENT_DATA.value
+        ),
         n=u.n,
-        privileged_rate=p.selection_rate,
-        unprivileged_rate=u.selection_rate,
+        privileged_rate=p.selection_rate if rates_defined else None,
+        unprivileged_rate=u.selection_rate if rates_defined else None,
+        details={"reason": rate_reason} if not enough_rates or not rates_defined else {},
     )
 
-    # --- Equalized Odds (requires labels) ---------------------------------
-    # Error-rate bias (e.g. COMPAS) is invisible to the selection-rate DI rule, so we
-    # also flag when we are statistically confident the Equalized-Odds gap is large.
+    # --- Equalized Odds (requires labels AND enough labels in BOTH groups) ---
     flagged_eo = False
     if (
         y_true is not None
@@ -264,8 +298,12 @@ def _audit_pair(
         and u.fpr is not None
     ):
         eo_val = calculate_eo(p.tpr, p.fpr, u.tpr, u.fpr)
-        n_pos = round((u.base_rate or 0.0) * u.n)
-        enough_eo = has_sufficient_data(u.n, n_pos, u.n - n_pos, error_metric=True)
+        p_pos = int(np.count_nonzero((sensitive == priv_value) & (y_true == 1)))
+        u_pos = int(np.count_nonzero((sensitive == unpriv_value) & (y_true == 1)))
+        enough_eo = (
+            has_sufficient_data(p.n, p_pos, p.n - p_pos, error_metric=True)
+            and has_sufficient_data(u.n, u_pos, u.n - u_pos, error_metric=True)
+        )
         eo_ci = (
             equalized_odds_ci(
                 sensitive, y_pred, y_true, priv_value, unpriv_value, n_boot=n_boot, seed=seed
@@ -273,27 +311,38 @@ def _audit_pair(
             if compute_ci and enough_eo
             else None
         )
-        if eo_ci is not None and not np.isnan(eo_ci.low):
-            flagged_eo = eo_ci.low > EO_THRESHOLD
-        else:
-            flagged_eo = eo_val > EO_THRESHOLD
-        eo_cls = (
-            Classification.INSUFFICIENT_DATA.value
-            if not enough_eo
-            else classify_equalized_odds(eo_val)
+        eo_ci_valid = (
+            eo_ci is not None and np.isfinite(eo_ci.low) and np.isfinite(eo_ci.high)
+        )
+        flagged_eo = bool(
+            enough_eo and eo_ci_valid and eo_ci is not None and eo_ci.low > EO_THRESHOLD
         )
         metrics[MetricName.EQUALIZED_ODDS.value] = MetricResult(
             name=MetricName.EQUALIZED_ODDS.value,
             value=eo_val,
             group_label=label,
-            classification=eo_cls,
-            ci=eo_ci,
+            classification=(
+                classify_equalized_odds(eo_val)
+                if enough_eo
+                else Classification.INSUFFICIENT_DATA.value
+            ),
+            ci=eo_ci if eo_ci_valid else None,
             n=u.n,
             details={
                 "tpr_priv": p.tpr,
                 "tpr_unpriv": u.tpr,
                 "fpr_priv": p.fpr,
                 "fpr_unpriv": u.fpr,
+                "n_positive_privileged": p_pos,
+                "n_negative_privileged": p.n - p_pos,
+                "n_positive_unprivileged": u_pos,
+                "n_negative_unprivileged": u.n - u_pos,
+                **(
+                    {"reason": "Equalized Odds requires at least 30 positive and 30 negative "
+                     "labels in EACH comparison group."}
+                    if not enough_eo
+                    else {}
+                ),
             },
         )
     else:
@@ -303,7 +352,13 @@ def _audit_pair(
             group_label=label,
             n=u.n,
             classification=Classification.INSUFFICIENT_DATA.value,
-            details={"reason": "Equalized Odds requires ground-truth labels."},
+            details={
+                "reason": (
+                    "Equalized Odds requires ground-truth labels."
+                    if y_true is None
+                    else "Both groups must have positive and negative ground-truth labels."
+                )
+            },
         )
 
     return GroupAuditResult(
@@ -318,23 +373,30 @@ def _audit_pair(
     )
 
 
-def _di_value(g: GroupAuditResult) -> float | None:
-    m = g.metric(MetricName.DISPARATE_IMPACT)
-    return m.value if m is not None else None
-
-
-def _metric_value(g: GroupAuditResult, name: MetricName, default: float = 0.0) -> float:
-    m = g.metric(name)
-    return m.value if m is not None and m.value is not None else default
-
 
 def _aggregate(groups: list[GroupAuditResult]) -> tuple[float | None, str | None, float | None]:
-    """Composite from the worst (lowest-DI) group; this drives the headline verdict."""
-    scored = [(g, v) for g in groups if (v := _di_value(g)) is not None]
-    if not scored:
+    """Publish a three-metric headline only when every comparison is evaluable.
+
+    In particular, unavailable Equalized Odds is NOT a perfect zero gap, and
+    dropping an undersampled group would bias the overall score upwards.
+    The raw per-group point estimates remain available independently.
+    """
+    if not groups:
         return None, None, None
+    scored: list[tuple[GroupAuditResult, float]] = []
+    for g in groups:
+        di_m = g.metric(MetricName.DISPARATE_IMPACT)
+        spd_m = g.metric(MetricName.SPD)
+        eo_m = g.metric(MetricName.EQUALIZED_ODDS)
+        if not all(m is not None and m.computable for m in (di_m, spd_m, eo_m)):
+            return None, None, None
+        assert di_m is not None and di_m.value is not None
+        scored.append((g, di_m.value))
+
     worst_g, di = min(scored, key=lambda pair: pair[1])
-    spd = _metric_value(worst_g, MetricName.SPD)
-    eo = _metric_value(worst_g, MetricName.EQUALIZED_ODDS)
-    composite = compute_composite_bias_score(di, spd, eo)
+    spd = worst_g.metric(MetricName.SPD)
+    eo = worst_g.metric(MetricName.EQUALIZED_ODDS)
+    assert spd is not None and spd.value is not None
+    assert eo is not None and eo.value is not None
+    composite = compute_composite_bias_score(di, spd.value, eo.value)
     return composite, classify_composite_score(composite), di

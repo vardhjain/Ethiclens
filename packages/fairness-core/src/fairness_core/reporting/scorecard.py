@@ -11,7 +11,12 @@ from __future__ import annotations
 import io
 from dataclasses import dataclass, field
 
-from fairness_core.types import AuditResult, GroupAuditResult, MetricName
+from fairness_core.types import (
+    AuditResult,
+    Classification,
+    GroupAuditResult,
+    MetricName,
+)
 
 __all__ = ["ScorecardMeta", "generate_scorecard_pdf"]
 
@@ -40,11 +45,11 @@ def _di_chart_png(result: AuditResult, threshold: float) -> bytes | None:
     groups, values, colors = [], [], []
     for g in result.groups:
         m = g.metric(MetricName.DISPARATE_IMPACT)
-        if m is None or m.value is None:
+        if m is None or not m.computable:
             continue
         groups.append(g.group_label)
         values.append(m.value)
-        colors.append("#c0392b" if g.flagged else "#27ae60")
+        colors.append("#c0392b" if g.flagged else "#95a5a6" if _inconclusive(g) else "#27ae60")
     if not groups:
         return None
 
@@ -62,26 +67,45 @@ def _di_chart_png(result: AuditResult, threshold: float) -> bytes | None:
     return buf.getvalue()
 
 
-def _di_of(g: GroupAuditResult) -> float:
-    m = g.metric(MetricName.DISPARATE_IMPACT)
-    return m.value if m is not None and m.value is not None else 1.0
+def _inconclusive(g: GroupAuditResult) -> bool:
+    """Missing data or a CI crossing the threshold is not a clean pass."""
+    di = g.metric(MetricName.DISPARATE_IMPACT)
+    eo = g.metric(MetricName.EQUALIZED_ODDS)
+    if (
+        di is None
+        or not di.computable
+        or di.ci is None
+        or eo is None
+        or not eo.computable
+        or eo.ci is None
+    ):
+        return True
+    # An interval touching the decision boundary is inconclusive, not a pass.
+    return di.ci.low <= 0.80 <= di.ci.high or eo.ci.low <= 0.10 <= eo.ci.high
 
 
 def _verdict_text(result: AuditResult, threshold: float) -> str:
+    if not result.groups:
+        return "No demographic comparisons were available. Fairness was not assessed."
     flagged = result.flagged_groups
-    if not flagged:
+    if flagged:
+        names = ", ".join(g.group_label for g in flagged)
         return (
-            "All evaluated demographic groups meet the 0.80 four-fifths threshold. "
-            "No disparate impact was detected at the configured significance level."
+            f"<b>{len(flagged)} group(s) flagged.</b> Statistically supported threshold "
+            f"violations were detected for {names}. Review individual Disparate Impact "
+            "and Equalized Odds intervals; no deployment clearance is implied."
         )
-    worst = min(flagged, key=_di_of)
-    pct = round(_di_of(worst) * 100)
+    if result.composite_score is None or any(_inconclusive(g) for g in result.groups):
+        return (
+            "Inconclusive fairness assessment: at least one comparison lacks sufficient "
+            "data, ground-truth labels, or a confidence interval that resolves the "
+            "configured thresholds. An absence of flags is not evidence of fairness."
+        )
     return (
-        f"<b>{len(flagged)} group(s) flagged.</b> The most affected group "
-        f"(<b>{worst.group_label}</b>) is selected at about <b>{pct}%</b> of the favoured "
-        f"group's rate — below the 80% regulatory threshold. Review the recommended "
-        f"mitigations before this model is cleared for production."
+        "No statistically supported threshold violation was detected in the evaluated "
+        "comparisons. This does not certify fairness or legal compliance."
     )
+
 
 
 def generate_scorecard_pdf(result: AuditResult, meta: ScorecardMeta) -> bytes:
@@ -113,7 +137,7 @@ def generate_scorecard_pdf(result: AuditResult, meta: ScorecardMeta) -> bytes:
         ["Session", meta.session_id, "Audit date", meta.audit_date],
         [
             "Composite",
-            f"{_fmt(result.composite_score)} ({result.composite_band})",
+            f"{_fmt(result.composite_score)} ({result.composite_band or 'Not assessed'})",
             "Worst DI",
             _fmt(result.min_di),
         ],
@@ -159,7 +183,7 @@ def generate_scorecard_pdf(result: AuditResult, meta: ScorecardMeta) -> bytes:
                 ci_s,
                 _fmt(spd.value if spd else None),
                 _fmt(eo_val) if eo_val is not None else "N/A",
-                "FLAG" if g.flagged else "OK",
+                "FLAG" if g.flagged else "INCONCLUSIVE" if _inconclusive(g) else "NO FLAG",
             ]
         )
         if g.flagged:
@@ -183,7 +207,8 @@ def generate_scorecard_pdf(result: AuditResult, meta: ScorecardMeta) -> bytes:
         "<b>What this scorecard does and does not prove.</b> Metrics are statistical "
         "evidence, not a legal clearance. The composite is a triage convenience, not a "
         "standard; always read the per-group values and their confidence intervals. "
-        "Equalized Odds requires ground-truth labels and is shown as N/A otherwise. "
+        "Equalized Odds requires ground-truth labels and both groups to meet label-count "
+        "floors; the composite is withheld if any comparison is insufficient. "
         f"Audit reproduced under seed {meta.seed if meta.seed is not None else 'fixed'} "
         f"on dataset '{meta.dataset}'."
     )
