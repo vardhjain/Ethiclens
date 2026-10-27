@@ -371,7 +371,6 @@ def _audit_pair(
     )
 
 
-
 def _aggregate(groups: list[GroupAuditResult]) -> tuple[float | None, str | None, float | None]:
     """Publish a three-metric headline only when every comparison is evaluable.
 
