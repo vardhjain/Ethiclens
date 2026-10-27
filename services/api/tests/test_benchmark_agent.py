@@ -72,6 +72,8 @@ def test_markdown_discloses_unavailable_measurements() -> None:
                 "labels_available": False,
                 "positive_is_favorable": True,
                 "flagged_cohorts": 1,
+                "cohort_comparisons": 1,
+                "computable_di_cohorts": 0,
                 "min_disparate_impact": None,
                 "heldout_mitigation": None,
                 "timing_ms": {"total_ms": {"median": 42.0}},
