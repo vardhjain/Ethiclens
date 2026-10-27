@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Callable
 from typing import Protocol, TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -32,6 +33,22 @@ _DEFAULT_TIMEOUT_SECONDS = 30.0
 
 class LLMCallError(RuntimeError):
     """Raised when every configured provider failed to produce valid structured output."""
+
+
+class LLMQuotaExceeded(RuntimeError):
+    """No more provider attempts may be sent under the configured daily caps."""
+
+
+class QuotaBoundLLMClient:
+    """Reserve one attempt immediately before contacting a real provider."""
+
+    def __init__(self, client: LLMClient, reserve: Callable[[], None]) -> None:
+        self._client = client
+        self._reserve = reserve
+
+    def complete(self, system: str, prompt: str) -> str:
+        self._reserve()
+        return self._client.complete(system, prompt)
 
 
 class LLMClient(Protocol):
@@ -166,6 +183,10 @@ class FallbackLLMClient:
             start = time.monotonic()
             try:
                 result = client.complete(system, prompt)
+            except LLMQuotaExceeded:
+                # Quota denial is a local hard stop, not a provider outage.
+                # Never fall through to another provider and bypass the cap.
+                raise
             except Exception as exc:
                 elapsed = time.monotonic() - start
                 _log.warning(
@@ -185,6 +206,17 @@ class FallbackLLMClient:
         raise LLMCallError(
             f"All {len(self._clients)} configured LLM provider(s) failed: " + "; ".join(errors)
         ) from last_error
+
+
+def bind_attempt_quota(client: LLMClient, reserve: Callable[[], None]) -> LLMClient:
+    """Instrument LEAF providers, so fallback consumes a slot per provider.
+
+    Wrapping only the outer fallback would allow a failed primary and successful
+    secondary to cost two calls while consuming just one slot.
+    """
+    if isinstance(client, FallbackLLMClient):
+        return FallbackLLMClient([bind_attempt_quota(c, reserve) for c in client._clients])
+    return QuotaBoundLLMClient(client, reserve)
 
 
 def build_default_client(groq_api_key: str | None, gemini_api_key: str | None) -> LLMClient:

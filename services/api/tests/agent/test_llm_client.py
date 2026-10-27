@@ -8,6 +8,8 @@ from pydantic import BaseModel
 from ethiclens_api.agent.llm_client import (
     FallbackLLMClient,
     LLMCallError,
+    LLMQuotaExceeded,
+    bind_attempt_quota,
     build_default_client,
     build_default_client_or_none,
     complete_json,
@@ -189,3 +191,62 @@ def test_gemini_client_requests_native_json_mode() -> None:
     client._client.models.generate_content = _fake_generate_content
     client.complete("system", "prompt")
     assert captured["config"]["response_mime_type"] == "application/json"
+
+
+def test_attempt_meter_reserves_for_each_schema_retry() -> None:
+    client = _StubClient(response="not JSON")
+    reservations: list[str] = []
+    metered = bind_attempt_quota(client, lambda: reservations.append("attempt"))
+    with pytest.raises(LLMCallError):
+        complete_json(metered, "system", "prompt", _Answer)
+    assert reservations == ["attempt", "attempt"]
+    assert client.calls == 2
+
+
+def test_attempt_meter_counts_primary_and_secondary_provider() -> None:
+    primary = _StubClient(error=RuntimeError("upstream unavailable"))
+    fallback = _StubClient(response=json.dumps({"text": "yes"}))
+    reservations: list[str] = []
+    metered = bind_attempt_quota(
+        FallbackLLMClient([primary, fallback]),
+        lambda: reservations.append("attempt"),
+    )
+    assert complete_json(metered, "system", "prompt", _Answer).text == "yes"
+    assert reservations == ["attempt", "attempt"]
+    assert primary.calls == 1
+    assert fallback.calls == 1
+
+
+def test_attempt_meter_hard_stop_never_tries_fallback_on_denial() -> None:
+    primary = _StubClient(error=RuntimeError("upstream unavailable"))
+    fallback = _StubClient(response=json.dumps({"text": "yes"}))
+    total = 0
+
+    def reserve() -> None:
+        nonlocal total
+        if total == 1:
+            raise LLMQuotaExceeded("out of budget")
+        total += 1
+
+    metered = bind_attempt_quota(FallbackLLMClient([primary, fallback]), reserve)
+    with pytest.raises(LLMQuotaExceeded):
+        complete_json(metered, "system", "prompt", _Answer)
+    assert total == 1
+    assert primary.calls == 1
+    assert fallback.calls == 0
+
+
+def test_attempt_meter_does_not_send_retry_when_cap_exhausted() -> None:
+    client = _StubClient(response="not JSON")
+    total = 0
+
+    def reserve() -> None:
+        nonlocal total
+        if total >= 1:
+            raise LLMQuotaExceeded("out of budget")
+        total += 1
+
+    with pytest.raises(LLMQuotaExceeded):
+        complete_json(bind_attempt_quota(client, reserve), "s", "p", _Answer)
+    assert client.calls == 1
+    assert total == 1
