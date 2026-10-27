@@ -87,6 +87,8 @@ def test_eo_requires_positive_and_negative_labels_on_both_sides() -> None:
     assert not group.flagged
     assert di.value == pytest.approx(1.0)
     assert result.composite_score is None
+    assert result.min_di == pytest.approx(1.0)
+    assert "insufficient evidence" in result.metadata["composite_reason"]
     assert result.metadata["insufficient_groups"] == [group.group_label]
 
 
@@ -102,6 +104,8 @@ def test_unlabeled_audit_does_not_earn_perfect_equalized_odds_credit() -> None:
     assert eo.value is None
     assert result.composite_score is None
     assert result.composite_band is None
+    assert result.min_di == pytest.approx((120 / 400) / (360 / 400))
+    assert "ground-truth" in result.metadata["composite_reason"]
     assert "not assessed" not in _verdict_text(result, 0.8).lower()
 
 
@@ -162,3 +166,36 @@ def test_labeled_large_groups_still_have_complete_composite() -> None:
     assert result.composite_band is not None
     assert result.metadata["insufficient_groups"] == []
     assert result.metadata["composite_complete"] is True
+    assert result.metadata["composite_reason"] is None
+
+
+def test_partial_di_evidence_never_produces_a_selective_minimum() -> None:
+    """One adequately powered cohort cannot mask an underpowered second group."""
+    df = pd.DataFrame(
+        {
+            "group": ["A"] * 400 + ["B"] * 400 + ["C"] * 20,
+            "prediction": ([1] * 360 + [0] * 40 + [1] * 120 + [0] * 280 + [1] + [0] * 19),
+        }
+    )
+    result = run_audit(
+        lambda x: x["prediction"].to_numpy(),
+        df,
+        [AttributeSpec("group", "A")],
+        feature_columns=["prediction"],
+        compute_ci=False,
+    )
+    assert len(result.groups) == 2
+    b_di = result.groups[0].metric(MetricName.DISPARATE_IMPACT)
+    c_di = result.groups[1].metric(MetricName.DISPARATE_IMPACT)
+    assert b_di is not None and b_di.computable
+    assert c_di is not None and not c_di.computable
+    assert result.min_di is None
+    assert result.composite_score is None
+
+
+def test_di_headline_available_without_labels_but_not_composite() -> None:
+    result = _audit(_frame([1] * 360 + [0] * 40, [1] * 120 + [0] * 280))
+    assert result.min_di == pytest.approx(1 / 3)
+    assert result.composite_score is None
+    assert result.composite_band is None
+    assert result.metadata["composite_complete"] is False

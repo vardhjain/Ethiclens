@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { AgentRecord, ScorecardMetric } from "../api/client";
-import { buildMarkdownReport, formatMetricMarkdown } from "./AgentRecord";
+import {
+  buildMarkdownReport,
+  formatMetricMarkdown,
+  groupEvidenceLabel,
+} from "./AgentRecord";
 
 describe("formatMetricMarkdown", () => {
   it("formats a metric with a classification", () => {
@@ -32,6 +36,17 @@ describe("formatMetricMarkdown", () => {
       classification: "INSUFFICIENT_DATA",
       ci: null,
       n: 5,
+    };
+    expect(formatMetricMarkdown(metric)).toBe("Insufficient data");
+  });
+
+  it("does not present an underpowered point estimate as a valid metric", () => {
+    const metric: ScorecardMetric = {
+      name: "equalized_odds",
+      value: 0.16,
+      classification: "INSUFFICIENT_DATA",
+      ci: null,
+      n: 12,
     };
     expect(formatMetricMarkdown(metric)).toBe("Insufficient data");
   });
@@ -151,5 +166,49 @@ describe("buildMarkdownReport", () => {
       "## Mitigation: before vs. after (measured on held-out data)",
     );
     expect(md).toContain("0.566 → 0.850 (crosses 0.80 threshold)");
+  });
+});
+
+
+
+describe("aggregate and group evidence labels", () => {
+  it("explains why a composite is unavailable while DI can be computed", () => {
+    const previous = _record();
+    const md = buildMarkdownReport(
+      _record({
+        scorecard: {
+          ...previous.scorecard,
+          composite_score: null,
+          composite_band: null,
+          composite_reason: "Ground-truth labels are missing.",
+          min_disparate_impact: 0.566,
+        },
+      }),
+    );
+    expect(md).toContain("**Composite score:** Not assessed");
+    expect(md).toContain("Ground-truth labels are missing.");
+    expect(md).toContain("**Minimum group DI:** 0.566");
+    expect(md).not.toContain("**Risk band:**");
+  });
+
+  it("never calls an inconclusive non-flagged cohort OK", () => {
+    const group = _record().scorecard.groups[0];
+    expect(groupEvidenceLabel({ ...group, flagged: false })).toBe("Not flagged");
+    expect(
+      groupEvidenceLabel({
+        ...group,
+        flagged: false,
+        metrics: {
+          ...group.metrics,
+          equalized_odds: {
+            name: "equalized_odds",
+            value: 0.12,
+            classification: "INSUFFICIENT_DATA",
+            ci: null,
+            n: 12,
+          },
+        },
+      }),
+    ).toBe("Not flagged (incomplete evidence)");
   });
 });

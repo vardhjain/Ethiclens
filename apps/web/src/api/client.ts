@@ -204,6 +204,8 @@ export interface MeasuredMitigation {
 export interface Scorecard {
   composite_score: number | null;
   composite_band: string | null;
+  /** Optional for records generated before the composite-evidence contract. */
+  composite_reason?: string | null;
   min_disparate_impact: number | null;
   has_labels: boolean;
   metrics_reason: string;

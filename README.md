@@ -163,6 +163,16 @@ half the rate of men, caught by **Disparate Impact**. EthicLens flags on *either
 both hiring/lending-style (favorable) and risk-scoring (adverse) decisions. See
 [methodology](docs/methodology.md#worked-example-compas).
 
+## Fairness reporting when evidence is incomplete
+
+EthicLens distinguishes the **minimum group Disparate Impact** from the
+**three-metric composite**. The former is available when every group comparison
+has adequate DI evidence; the latter requires reliable DI, SPD **and** Equalized
+Odds in every group. A predictions-only audit can therefore report an informative
+DI without inventing Equalized Odds or a composite risk band. An underpowered
+cohort still blocks the all-groups DI headline. The UI explicitly labels
+unassessed metrics and never interprets a non-flag as proof of fairness.
+
 ## Reproduce the agent's offline evidence
 
 Beyond the pinned synthetic golden-model test, [**agent-evidence CI**](https://github.com/vardhjain/Ethiclens/actions/workflows/agent-evidence.yml)
