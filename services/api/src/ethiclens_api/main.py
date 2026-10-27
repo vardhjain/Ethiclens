@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,6 +31,18 @@ logging.basicConfig(
     level=get_settings().log_level,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
+
+_REVISION_FILE = Path(__file__).with_name("_deployment_revision")
+
+
+def _running_revision() -> str:
+    """Read build-stamped image identity, or expose 'unknown' outside Cloud Run."""
+    try:
+        value = _REVISION_FILE.read_text(encoding="ascii").strip()
+    except (OSError, UnicodeError):
+        return "unknown"
+    return value if re.fullmatch(r"[0-9a-f]{40}", value) else "unknown"
+
 
 DESCRIPTION = (
     "EthicLens API — AI bias detection & mitigation workbench. Audit prediction "
@@ -101,7 +115,7 @@ def create_app() -> FastAPI:
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict[str, str]:
-        return {"status": "ok", "service": "ethiclens-api"}
+        return {"status": "ok", "service": "ethiclens-api", "revision": _running_revision()}
 
     return app
 

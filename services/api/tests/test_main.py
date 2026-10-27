@@ -8,7 +8,9 @@ from httpx import AsyncClient
 async def test_health_check(client: AsyncClient) -> None:
     resp = await client.get("/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok", "service": "ethiclens-api"}
+    assert resp.json()["status"] == "ok"
+    assert resp.json()["service"] == "ethiclens-api"
+    assert resp.json()["revision"] == "unknown"
 
 
 async def test_response_includes_security_headers(client: AsyncClient) -> None:
@@ -37,3 +39,19 @@ async def test_security_headers_present_on_a_rate_limited_response(
     resp = await client.post("/api/auth/login", data=data)
     assert resp.status_code == 429
     assert resp.headers["x-content-type-options"] == "nosniff"
+
+
+async def test_health_exposes_image_embedded_revision(
+    client: AsyncClient, monkeypatch, tmp_path
+) -> None:
+    import ethiclens_api.main as main
+
+    marker = tmp_path / "_deployment_revision"
+    marker.write_text("a" * 40 + "\n", encoding="ascii")
+    monkeypatch.setattr(main, "_REVISION_FILE", marker)
+    response = await client.get("/health")
+    assert response.json()["revision"] == "a" * 40
+
+    marker.write_text("not-a-commit\n", encoding="ascii")
+    response = await client.get("/health")
+    assert response.json()["revision"] == "unknown"

@@ -125,7 +125,7 @@ gcloud iam workload-identity-pools providers create-oidc github-provider \
   --project "$PROJECT_ID" --location global --workload-identity-pool github-pool \
   --issuer-uri "https://token.actions.githubusercontent.com" \
   --attribute-mapping "google.subject=assertion.sub,attribute.repository=assertion.repository" \
-  --attribute-condition "assertion.repository=='${REPO}'"
+  --attribute-condition "assertion.repository=='${REPO}' && assertion.ref=='refs/heads/main'"
 
 # 4. Let ONLY this specific repo impersonate the service account (no key ever
 #    leaves Google — GitHub's OIDC token is exchanged for short-lived creds).
@@ -143,9 +143,31 @@ add:
 - `GCP_SERVICE_ACCOUNT` = `github-deployer@$PROJECT_ID.iam.gserviceaccount.com`
 - `GCP_REGION` (optional — defaults to `us-central1` if unset)
 
-The workflow no-ops (skips every step, exits green) until all three required
-variables are set, so merging it before doing this setup is safe — same
-pattern as `keep-alive.yml`.
+**Required action:** All three GitHub Actions variables must be configured by
+the repository owner. If any is missing, the `deploy-api` workflow now **fails
+loudly** (without invoking Cloud Run), rather than reporting a misleading
+successful deployment. Set variables under
+[Settings → Secrets and variables → Actions](https://github.com/vardhjain/Ethiclens/settings/variables/actions).
+You do not need to paste credentials into GitHub issues or a chat.
+
+Deployments use Workload Identity Federation and only accept `main`.
+The Cloud Run service must already exist, with its runtime environment,
+Secret Manager bindings and public access configured. A deployment never
+overwrites those settings. The workflow discovers the actual Cloud Run
+service URL; `API_URL`, when configured, is additionally checked.
+
+**A green deployment now means:** Cloud Run source deployment completed,
+`/health` returned the **exact 40-character commit SHA** stamped into
+the container image, `/openapi.json` did not publish `/api/models/*`,
+and a direct request to `/api/models/upload` returned HTTP 404.
+Missing configuration, wrong revision, inaccessible URL or an unsafe
+upload endpoint fail the workflow. The recorded SHA reflects the running
+API image; the hosted Vercel frontend is a separate deployment.
+
+**Cost:** Triggering a genuine Cloud Run source build can incur Google
+Cloud Build/Artifact Registry/Cloud Run charges beyond applicable free
+tiers. This workflow does not deploy or create resources without your
+GCP setup; review billing safeguards before enabling auto-deploy.
 
 ## 3. Vercel (frontend)
 
@@ -206,3 +228,28 @@ set, so merging it before you've done steps 1-3 is safe.
   Trusted-local opt-in loading is **not sandboxed** and must not be exposed publicly.
 - **arq/Redis worker** — not deployed at all; `EAGER_TASKS=true` makes it
   unnecessary (see `ethiclens_api/tasks.py`).
+
+### Verify a live backend revision manually
+
+After a successful GitHub deployment, use the SHA shown on the Actions run
+(or `git rev-parse HEAD` when checking out the deployed commit):
+
+```bash
+python3 scripts/verify_cloudrun_deployment.py \
+  https://ethiclens-api-198617371990.us-central1.run.app \
+  <40-character-deployed-commit-sha>
+```
+
+The SHA check intentionally **fails** on older deployments that predate the
+build-stamped revision feature. A passing local `/health` response, without
+the exact revision, does not establish production parity. To deploy manually
+with a verifiable revision from a clean checkout, first write the marker:
+
+```bash
+printf '%s\n' "$(git rev-parse HEAD)" > services/api/src/ethiclens_api/_deployment_revision
+gcloud run deploy ethiclens-api --source . --region us-central1 --project "$PROJECT_ID"
+```
+
+Verify with the same revision and the service URL. Do not commit the generated
+revision marker. Repository CI tests cover the verification contract offline;
+CI itself **does not prove** that the currently hosted backend is updated.
