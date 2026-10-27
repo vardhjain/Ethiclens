@@ -14,7 +14,7 @@ from typing import Any
 from uuid import UUID
 
 import pandas as pd
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -142,16 +142,55 @@ async def execute_audit(session_id: UUID) -> None:
         obj = await session.get(AuditSession, session_id)
         if obj is None or obj.locked:
             return
-        obj.status = SessionStatus.RUNNING
+        started = await session.execute(
+            update(AuditSession)
+            .where(
+                AuditSession.id == session_id,
+                AuditSession.locked.is_(False),
+                AuditSession.status.in_((SessionStatus.DRAFT, SessionStatus.QUEUED)),
+            )
+            .values(status=SessionStatus.RUNNING)
+        )
+        if started.rowcount != 1:
+            return
         await session.commit()
 
         try:
             inputs = await _load_inputs(session, session_id)
             result = await asyncio.to_thread(_compute, inputs)
         except Exception as exc:
-            obj.status = SessionStatus.FAILED
-            obj.error = str(exc)[:1000]
+            await session.execute(
+                update(AuditSession)
+                .where(
+                    AuditSession.id == session_id,
+                    AuditSession.locked.is_(False),
+                    AuditSession.status == SessionStatus.RUNNING,
+                )
+                .values(status=SessionStatus.FAILED, error=str(exc)[:1000])
+            )
             await session.commit()
+            return
+
+        # Claim the final transition before writing metrics, in the same DB
+        # transaction. A concurrent sign-off cannot interleave with these rows.
+        finished = await session.execute(
+            update(AuditSession)
+            .where(
+                AuditSession.id == session_id,
+                AuditSession.locked.is_(False),
+                AuditSession.status == SessionStatus.RUNNING,
+            )
+            .values(
+                composite_score=result.composite_score,
+                composite_band=result.composite_band,
+                min_di=result.min_di,
+                status=SessionStatus.FLAGGED if result.flagged_groups else SessionStatus.COMPLETED,
+                completed_at=datetime.now(UTC),
+                error=None,
+            )
+        )
+        if finished.rowcount != 1:
+            await session.rollback()
             return
 
         # Replace any prior metrics, then persist the new ones (NFR-DB-001).
@@ -166,9 +205,4 @@ async def execute_audit(session_id: UUID) -> None:
         for row in _metric_rows(session_id, result):
             session.add(row)
 
-        obj.composite_score = result.composite_score
-        obj.composite_band = result.composite_band
-        obj.min_di = result.min_di
-        obj.status = SessionStatus.FLAGGED if result.flagged_groups else SessionStatus.COMPLETED
-        obj.completed_at = datetime.now(UTC)
         await session.commit()

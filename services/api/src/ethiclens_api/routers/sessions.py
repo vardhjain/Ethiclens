@@ -5,7 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ethiclens_api.config import get_settings
@@ -107,7 +107,15 @@ async def run_session(
     _check_model_execution_allowed(obj)
     if obj.locked:
         raise HTTPException(status.HTTP_409_CONFLICT, "Session is locked")
-    obj.status = SessionStatus.QUEUED
+    # Compare-and-swap prevents stale requests from re-queueing a signed-off
+    # session even when approval races with this request.
+    result = await db.execute(
+        update(AuditSession)
+        .where(AuditSession.id == session_id, AuditSession.locked.is_(False))
+        .values(status=SessionStatus.QUEUED)
+    )
+    if result.rowcount != 1:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Session is locked")
     await db.commit()
     job_id = await enqueue_audit(session_id)
     # Eager mode (tests/dev) runs the audit synchronously above via a separate
@@ -222,6 +230,10 @@ async def mitigate_session(
 ) -> dict:
     obj = await _owned(session_id, user, db)
     _check_model_execution_allowed(obj)
+    if obj.locked:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Session is locked")
+    if obj.status not in (SessionStatus.COMPLETED, SessionStatus.FLAGGED):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Audit must be completed before mitigation")
     child_id = await enqueue_mitigation(session_id, body.strategy, body.group_label)
     return {"result_session_id": str(child_id) if child_id else None, "status": "QUEUED"}
 

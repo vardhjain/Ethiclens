@@ -26,7 +26,7 @@ migrations from this directory with `alembic upgrade head`.
 | Audits | `POST /api/sessions/create`, `/{id}/run`, `GET /{id}/status`, `/{id}/metrics` | Run a bias audit and read the results |
 | Mitigation | `GET /api/sessions/{id}/recommendations`, `POST /{id}/mitigate` | Ranked fixes, then a re-audit as a child session |
 | Reports | `GET /api/sessions/{id}/report` | Fairness Scorecard PDF |
-| Governance | `POST /api/sessions/{id}/sign-off` | Role-restricted sign-off that locks the session |
+| Governance | `POST /api/sessions/{id}/sign-off`, `GET /api/sessions/{id}/integrity` | Separate approver; finalized audits only; SHA-256 snapshot integrity check |
 | Agent | `POST /api/agent/propose-schema`, `/run-audit`, `/demo-audit`, `/records/{id}/ask` | CSV in, narrated audit and grounded Q&A out |
 
 ## Configuration
@@ -49,3 +49,5 @@ pytest services/api/tests
 ```
 
 Tests run against a throwaway SQLite database and never call a real LLM.
+
+The governance fingerprint is **tamper-evident relative to an independently saved copy**, not an immutable external ledger. See [governance-integrity](../../docs/governance-integrity.md).

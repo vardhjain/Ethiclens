@@ -105,3 +105,12 @@ deliberate scope decision for a public, free-tier deployment, not a missing feat
 
 *If you find a place where the code claims more than this document allows, that is a bug — please
 open an issue.*
+
+## 14. Sign-off fingerprints are not cryptographic attestations
+Signing off captures a canonical SHA-256 fingerprint of the audit session, protected
+attributes, metrics and mitigation logs. The integrity endpoint can detect
+subsequent changes, especially when the original fingerprint was retained in
+an independent system. However, both the fingerprint and data live in the same
+database: anyone able to rewrite both can conceal changes. This is **not** a
+digital signature or immutable audit ledger. See
+[`docs/governance-integrity.md`](docs/governance-integrity.md).

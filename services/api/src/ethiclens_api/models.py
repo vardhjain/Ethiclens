@@ -127,6 +127,7 @@ class AuditSession(Base):
     signed_off_by: Mapped[UUID | None] = mapped_column(ForeignKey("user_account.id"), nullable=True)
     signed_off_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     approver_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    signoff_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
     locked: Mapped[bool] = mapped_column(Boolean, default=False)
 
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
