@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from httpx import AsyncClient
 
 from ethiclens_api.config import get_settings
@@ -12,6 +13,34 @@ async def test_register_login_me(client: AsyncClient, auth) -> None:
     me = await client.get("/api/auth/me", headers=headers)
     assert me.status_code == 200
     assert me.json()["email"] == "a@example.com"
+    assert me.json()["role"] == "ml_engineer"
+
+
+@pytest.mark.parametrize(
+    "requested_role",
+    ["ml_engineer", "compliance_officer", "governance_approver", "admin"],
+)
+async def test_public_registration_rejects_client_supplied_roles(
+    client: AsyncClient, requested_role: str
+) -> None:
+    """Client-controlled roles must not be accepted, even for the default role."""
+    email = f"self-promote-{requested_role}@example.com"
+    response = await client.post(
+        "/api/auth/register",
+        json={
+            "email": email,
+            "password": "password123",
+            "role": requested_role,
+        },
+    )
+    assert response.status_code == 422
+    assert any(error["loc"][-1] == "role" for error in response.json()["detail"])
+    # A rejected registration must not create an account.
+    login = await client.post(
+        "/api/auth/login",
+        data={"username": email, "password": "password123"},
+    )
+    assert login.status_code == 401
 
 
 async def test_duplicate_register_conflict(client: AsyncClient, auth) -> None:
