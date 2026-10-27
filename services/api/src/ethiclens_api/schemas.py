@@ -83,6 +83,7 @@ class SessionOut(BaseModel):
     min_di: float | None
     parent_session_id: UUID | None
     locked: bool
+    signoff_digest: str | None
     created_at: datetime
     completed_at: datetime | None
 
@@ -142,3 +143,9 @@ class MitigateRequest(BaseModel):
 
 class SignOffRequest(BaseModel):
     note: str = Field("", max_length=500)
+
+
+class IntegrityOut(BaseModel):
+    status: str
+    expected_digest: str | None
+    current_digest: str | None

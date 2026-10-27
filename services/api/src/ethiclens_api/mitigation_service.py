@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+
+from sqlalchemy import select
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -60,8 +62,23 @@ async def apply_mitigation(parent_id: UUID, strategy: str, group_label: str | No
         parent = await session.get(AuditSession, parent_id)
         if parent is None:
             raise ValueError("Parent session not found.")
+        if parent.locked or parent.status not in (SessionStatus.COMPLETED, SessionStatus.FLAGGED):
+            raise ValueError("Cannot mitigate a locked or unfinished audit.")
         inputs = await _load_inputs(session, parent_id)
         res, glabel = await asyncio.to_thread(_compute_mitigation, inputs, strategy, group_label)
+
+        # The audit may have been approved while the CPU-bound mitigation ran.
+        # Lock the parent row on PostgreSQL until the child/log commit completes.
+        parent = (
+            await session.execute(
+                select(AuditSession)
+                .where(AuditSession.id == parent_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one()
+        if parent.locked or parent.status not in (SessionStatus.COMPLETED, SessionStatus.FLAGGED):
+            raise ValueError("Cannot mitigate a locked or unfinished audit.")
 
         child = AuditSession(
             owner_id=parent.owner_id,
